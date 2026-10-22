@@ -6,12 +6,17 @@ import com.farmengine.entity.FarmerProfile;
 import com.farmengine.entity.User;
 import com.farmengine.exception.ConflictException;
 import com.farmengine.exception.ResourceNotFoundException;
+import com.farmengine.exception.ValidationException;
 import com.farmengine.repository.FarmerProfileRepository;
 import com.farmengine.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Business logic for farmer profiles.
@@ -38,6 +43,7 @@ public class FarmerProfileService {
      * @return the persisted profile as a response DTO
      * @throws ResourceNotFoundException if the user does not exist
      * @throws ConflictException         if the user already has a profile
+     * @throws ValidationException       if agronomic or cross-field constraints fail
      */
     @Transactional
     public FarmerProfileResponse createProfile(Long ownerId, CreateFarmerProfileRequest request) {
@@ -48,8 +54,16 @@ public class FarmerProfileService {
             throw new ConflictException("A farmer profile already exists for user id " + ownerId);
         }
 
+        validateAgronomicData(
+                request.getTotalLandHectares(),
+                request.getCultivableHectares(),
+                request.getWaterAvailabilityMonths(),
+                request.getWorkingCapitalInr()
+        );
+
         FarmerProfile profile = new FarmerProfile();
         profile.setOwner(owner);
+        // Phase 1 fields
         profile.setFullName(request.getFullName());
         profile.setPhoneNumber(request.getPhoneNumber());
         profile.setPrimaryState(request.getPrimaryState());
@@ -57,6 +71,13 @@ public class FarmerProfileService {
         profile.setTotalLandHectares(request.getTotalLandHectares());
         profile.setYearsOfExperience(request.getYearsOfExperience());
         profile.setPreferredLanguage(request.getPreferredLanguage());
+        // Phase 2A fields
+        profile.setCultivableHectares(request.getCultivableHectares());
+        profile.setSoilType(request.getSoilType());
+        profile.setIrrigationSource(request.getIrrigationSource());
+        profile.setWaterAvailabilityMonths(request.getWaterAvailabilityMonths());
+        profile.setWorkingCapitalInr(request.getWorkingCapitalInr());
+        profile.setRiskTolerance(request.getRiskTolerance());
 
         FarmerProfile saved = profileRepository.save(profile);
         log.info("Created farmer profile id={} for user id={}", saved.getId(), ownerId);
@@ -79,11 +100,13 @@ public class FarmerProfileService {
 
     /**
      * Update an existing farmer profile for the given user.
+     * Uses effective combined values for cross-field agronomic validation.
      *
      * @param ownerId the user's database id
      * @param request validated profile update data
      * @return the updated profile as a response DTO
      * @throws ResourceNotFoundException if user or profile does not exist
+     * @throws ValidationException       if agronomic or cross-field constraints fail
      */
     @Transactional
     public FarmerProfileResponse updateProfile(Long ownerId, com.farmengine.dto.UpdateFarmerProfileRequest request) {
@@ -94,17 +117,81 @@ public class FarmerProfileService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "FarmerProfile for user id " + ownerId + " was not found"));
 
+        // Effective values for cross-field validation & update
+        BigDecimal effectiveTotalLand = request.getTotalLandHectares() != null
+                ? request.getTotalLandHectares()
+                : profile.getTotalLandHectares();
+
+        BigDecimal effectiveCultivable = request.getCultivableHectares() != null
+                ? request.getCultivableHectares()
+                : profile.getCultivableHectares();
+
+        Integer effectiveWaterMonths = request.getWaterAvailabilityMonths() != null
+                ? request.getWaterAvailabilityMonths()
+                : profile.getWaterAvailabilityMonths();
+
+        BigDecimal effectiveWorkingCapital = request.getWorkingCapitalInr() != null
+                ? request.getWorkingCapitalInr()
+                : profile.getWorkingCapitalInr();
+
+        validateAgronomicData(
+                effectiveTotalLand,
+                effectiveCultivable,
+                effectiveWaterMonths,
+                effectiveWorkingCapital
+        );
+
+        // Phase 1 fields
         profile.setFullName(request.getFullName());
         profile.setPhoneNumber(request.getPhoneNumber());
         profile.setPrimaryState(request.getPrimaryState());
         profile.setPrimaryDistrict(request.getPrimaryDistrict());
-        profile.setTotalLandHectares(request.getTotalLandHectares());
+        profile.setTotalLandHectares(effectiveTotalLand);
         profile.setYearsOfExperience(request.getYearsOfExperience());
         profile.setPreferredLanguage(request.getPreferredLanguage());
+
+        // Phase 2A fields
+        profile.setCultivableHectares(effectiveCultivable);
+        profile.setSoilType(request.getSoilType() != null ? request.getSoilType() : profile.getSoilType());
+        profile.setIrrigationSource(request.getIrrigationSource() != null ? request.getIrrigationSource() : profile.getIrrigationSource());
+        profile.setWaterAvailabilityMonths(effectiveWaterMonths);
+        profile.setWorkingCapitalInr(effectiveWorkingCapital);
+        profile.setRiskTolerance(request.getRiskTolerance() != null ? request.getRiskTolerance() : profile.getRiskTolerance());
 
         FarmerProfile updated = profileRepository.save(profile);
         log.info("Updated farmer profile id={} for user id={}", updated.getId(), ownerId);
         return toResponse(updated);
+    }
+
+    private void validateAgronomicData(BigDecimal totalLand, BigDecimal cultivableLand,
+                                       Integer waterMonths, BigDecimal workingCapital) {
+        Map<String, String> errors = new LinkedHashMap<>();
+
+        if (totalLand != null && totalLand.compareTo(BigDecimal.ZERO) <= 0) {
+            errors.put("totalLandHectares", "Total land must be greater than 0 if provided");
+        }
+
+        if (cultivableLand != null) {
+            if (cultivableLand.compareTo(BigDecimal.ZERO) <= 0) {
+                errors.put("cultivableHectares", "Cultivable hectares must be greater than 0 if provided");
+            } else if (totalLand == null) {
+                errors.put("cultivableHectares", "Cultivable hectares cannot exceed total land hectares");
+            } else if (cultivableLand.compareTo(totalLand) > 0) {
+                errors.put("cultivableHectares", "Cultivable hectares cannot exceed total land hectares");
+            }
+        }
+
+        if (waterMonths != null && (waterMonths < 0 || waterMonths > 12)) {
+            errors.put("waterAvailabilityMonths", "Water availability months must be between 0 and 12");
+        }
+
+        if (workingCapital != null && workingCapital.compareTo(BigDecimal.ZERO) < 0) {
+            errors.put("workingCapitalInr", "Working capital cannot be negative");
+        }
+
+        if (!errors.isEmpty()) {
+            throw new ValidationException("Validation failed", errors);
+        }
     }
 
     /**
@@ -154,6 +241,7 @@ public class FarmerProfileService {
                 .ownerId(owner.getId())
                 .ownerUsername(owner.getUsername())
                 .ownerEmail(owner.getEmail())
+                // Phase 1 fields
                 .fullName(profile.getFullName())
                 .phoneNumber(profile.getPhoneNumber())
                 .primaryState(profile.getPrimaryState())
@@ -161,6 +249,13 @@ public class FarmerProfileService {
                 .totalLandHectares(profile.getTotalLandHectares())
                 .yearsOfExperience(profile.getYearsOfExperience())
                 .preferredLanguage(profile.getPreferredLanguage())
+                // Phase 2A fields
+                .cultivableHectares(profile.getCultivableHectares())
+                .soilType(profile.getSoilType())
+                .irrigationSource(profile.getIrrigationSource())
+                .waterAvailabilityMonths(profile.getWaterAvailabilityMonths())
+                .workingCapitalInr(profile.getWorkingCapitalInr())
+                .riskTolerance(profile.getRiskTolerance())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();

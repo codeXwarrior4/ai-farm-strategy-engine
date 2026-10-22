@@ -26,6 +26,39 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 10_000,
 });
 
+const TOKEN_KEY = 'farm_engine_jwt';
+let inMemoryToken: string | null = null;
+
+export function getAuthToken(): string | null {
+  if (inMemoryToken) return inMemoryToken;
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthToken(token: string | null): void {
+  inMemoryToken = token;
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage quota/permission exceptions in restricted environments
+  }
+}
+
+apiClient.interceptors.request.use((config) => {
+  const token = getAuthToken();
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /** Structured error returned from the backend. */
 export interface ApiErrorData {
   status: number;

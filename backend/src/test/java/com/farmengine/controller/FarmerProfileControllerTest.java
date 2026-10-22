@@ -3,6 +3,9 @@ package com.farmengine.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.farmengine.dto.CreateFarmerProfileRequest;
 import com.farmengine.dto.UpdateFarmerProfileRequest;
+import com.farmengine.entity.IrrigationSource;
+import com.farmengine.entity.RiskTolerance;
+import com.farmengine.entity.SoilType;
 import com.farmengine.entity.User;
 import com.farmengine.repository.UserRepository;
 import com.farmengine.security.JwtUtil;
@@ -359,5 +362,268 @@ class FarmerProfileControllerTest {
                         .content(objectMapper.writeValueAsString(updateReq)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 2A — Farm Data Foundation & Cross-Field Validation HTTP Tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("POST profile with all Phase 2A agronomic fields should return 201 Created")
+    void createProfile_withPhase2AFields_returns201() throws Exception {
+        CreateFarmerProfileRequest req = CreateFarmerProfileRequest.builder()
+                .fullName("Balaram Naik")
+                .phoneNumber("+919123456789")
+                .primaryState("Karnataka")
+                .primaryDistrict("Dharwad")
+                .totalLandHectares(new BigDecimal("6.0000"))
+                .yearsOfExperience(12)
+                .preferredLanguage("kn")
+                .cultivableHectares(new BigDecimal("4.5000"))
+                .soilType(SoilType.BLACK)
+                .irrigationSource(IrrigationSource.BOREWELL)
+                .waterAvailabilityMonths(8)
+                .workingCapitalInr(new BigDecimal("60000.00"))
+                .riskTolerance(RiskTolerance.MEDIUM)
+                .build();
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.totalLandHectares").value(6.0))
+                .andExpect(jsonPath("$.cultivableHectares").value(4.5))
+                .andExpect(jsonPath("$.soilType").value("BLACK"))
+                .andExpect(jsonPath("$.irrigationSource").value("BOREWELL"))
+                .andExpect(jsonPath("$.waterAvailabilityMonths").value(8))
+                .andExpect(jsonPath("$.workingCapitalInr").value(60000.0))
+                .andExpect(jsonPath("$.riskTolerance").value("MEDIUM"));
+    }
+
+    @Test
+    @DisplayName("POST profile should return 400 when cultivable land exceeds total land")
+    void createProfile_cultivableExceedsTotalLand_returns400() throws Exception {
+        CreateFarmerProfileRequest req = CreateFarmerProfileRequest.builder()
+                .fullName("Balaram Naik")
+                .yearsOfExperience(12)
+                .preferredLanguage("kn")
+                .totalLandHectares(new BigDecimal("3.0000"))
+                .cultivableHectares(new BigDecimal("5.0000"))
+                .build();
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.cultivableHectares").exists());
+    }
+
+    @Test
+    @DisplayName("POST profile should return 400 when cultivable land is supplied without total land")
+    void createProfile_cultivableWithoutTotalLand_returns400() throws Exception {
+        CreateFarmerProfileRequest req = CreateFarmerProfileRequest.builder()
+                .fullName("Balaram Naik")
+                .yearsOfExperience(12)
+                .preferredLanguage("kn")
+                .cultivableHectares(new BigDecimal("2.5000"))
+                .build();
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.cultivableHectares").exists());
+    }
+
+    @Test
+    @DisplayName("POST profile should return 400 when cultivable land is zero or negative")
+    void createProfile_cultivableZeroOrNegative_returns400() throws Exception {
+        Map<String, Object> body = Map.of(
+                "fullName", "Balaram Naik",
+                "yearsOfExperience", 5,
+                "preferredLanguage", "en",
+                "totalLandHectares", 5.0,
+                "cultivableHectares", 0.0
+        );
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.cultivableHectares").exists());
+    }
+
+    @Test
+    @DisplayName("POST profile should return 400 when waterAvailabilityMonths is out of bounds (0-12)")
+    void createProfile_waterMonthsOutOfRange_returns400() throws Exception {
+        Map<String, Object> body = Map.of(
+                "fullName", "Balaram Naik",
+                "yearsOfExperience", 5,
+                "preferredLanguage", "en",
+                "waterAvailabilityMonths", 15
+        );
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.waterAvailabilityMonths").exists());
+    }
+
+    @Test
+    @DisplayName("POST profile should return 400 when workingCapitalInr is negative")
+    void createProfile_workingCapitalNegative_returns400() throws Exception {
+        Map<String, Object> body = Map.of(
+                "fullName", "Balaram Naik",
+                "yearsOfExperience", 5,
+                "preferredLanguage", "en",
+                "workingCapitalInr", -100.0
+        );
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.workingCapitalInr").exists());
+    }
+
+    @Test
+    @DisplayName("POST profile should return 400 when an invalid enum value is supplied")
+    void createProfile_invalidEnum_returns400() throws Exception {
+        Map<String, Object> body = Map.of(
+                "fullName", "Balaram Naik",
+                "yearsOfExperience", 5,
+                "preferredLanguage", "en",
+                "soilType", "INVALID_SOIL_NAME"
+        );
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.soilType").exists());
+    }
+
+    @Test
+    @DisplayName("PUT profile with Phase 2A fields should update successfully and return 200")
+    void updateProfile_withPhase2AFields_returns200() throws Exception {
+        CreateFarmerProfileRequest createReq = CreateFarmerProfileRequest.builder()
+                .fullName("Original Name")
+                .yearsOfExperience(5)
+                .preferredLanguage("en")
+                .totalLandHectares(new BigDecimal("10.0000"))
+                .cultivableHectares(new BigDecimal("6.0000"))
+                .build();
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isCreated());
+
+        UpdateFarmerProfileRequest updateReq = UpdateFarmerProfileRequest.builder()
+                .fullName("Updated Name")
+                .yearsOfExperience(6)
+                .preferredLanguage("en")
+                .totalLandHectares(new BigDecimal("12.0000"))
+                .cultivableHectares(new BigDecimal("8.0000"))
+                .soilType(SoilType.RED)
+                .irrigationSource(IrrigationSource.CANAL)
+                .waterAvailabilityMonths(10)
+                .workingCapitalInr(new BigDecimal("90000.00"))
+                .riskTolerance(RiskTolerance.HIGH)
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Updated Name"))
+                .andExpect(jsonPath("$.totalLandHectares").value(12.0))
+                .andExpect(jsonPath("$.cultivableHectares").value(8.0))
+                .andExpect(jsonPath("$.soilType").value("RED"))
+                .andExpect(jsonPath("$.irrigationSource").value("CANAL"))
+                .andExpect(jsonPath("$.waterAvailabilityMonths").value(10))
+                .andExpect(jsonPath("$.workingCapitalInr").value(90000.0))
+                .andExpect(jsonPath("$.riskTolerance").value("HIGH"));
+    }
+
+    @Test
+    @DisplayName("PUT profile updating only cultivable land should validate against existing total land")
+    void updateProfile_changeOnlyCultivableExceedingExistingTotal_returns400() throws Exception {
+        CreateFarmerProfileRequest createReq = CreateFarmerProfileRequest.builder()
+                .fullName("Original Name")
+                .yearsOfExperience(5)
+                .preferredLanguage("en")
+                .totalLandHectares(new BigDecimal("10.0000"))
+                .cultivableHectares(new BigDecimal("6.0000"))
+                .build();
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isCreated());
+
+        // Update cultivable to 15 without sending totalLandHectares — effective total is 10, so 15 > 10 should fail
+        UpdateFarmerProfileRequest updateReq = UpdateFarmerProfileRequest.builder()
+                .fullName("Original Name")
+                .yearsOfExperience(5)
+                .preferredLanguage("en")
+                .cultivableHectares(new BigDecimal("15.0000"))
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.cultivableHectares").exists());
+    }
+
+    @Test
+    @DisplayName("PUT profile with invalid enum value should return 400 Bad Request")
+    void updateProfile_invalidEnum_returns400() throws Exception {
+        CreateFarmerProfileRequest createReq = CreateFarmerProfileRequest.builder()
+                .fullName("Original Name")
+                .yearsOfExperience(5)
+                .preferredLanguage("en")
+                .build();
+
+        mockMvc.perform(post("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isCreated());
+
+        Map<String, Object> badUpdate = Map.of(
+                "fullName", "Updated Name",
+                "yearsOfExperience", 5,
+                "preferredLanguage", "en",
+                "riskTolerance", "EXTREME_RISK"
+        );
+
+        mockMvc.perform(put("/api/v1/users/{userId}/farmer-profile", userAId)
+                        .header(HttpHeaders.AUTHORIZATION, userAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(badUpdate)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.fieldErrors.riskTolerance").exists());
     }
 }

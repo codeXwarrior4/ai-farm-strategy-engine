@@ -36,6 +36,44 @@ public class GlobalExceptionHandler {
         return buildError(HttpStatus.CONFLICT, ex.getMessage(), null, request);
     }
 
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleValidationException(
+            ValidationException ex, HttpServletRequest request) {
+        log.warn("Validation failed: {}", ex.getMessage());
+        return buildError(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed",
+                ex.getFieldErrors().isEmpty() ? null : ex.getFieldErrors(),
+                request
+        );
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadable(
+            org.springframework.http.converter.HttpMessageNotReadableException ex,
+            HttpServletRequest request) {
+        log.warn("Malformed HTTP message at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        String message = "Malformed request payload or invalid field value";
+
+        Throwable cause = ex.getCause();
+        if (cause instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException ife) {
+            String fieldName = ife.getPath().stream()
+                    .map(com.fasterxml.jackson.databind.JsonMappingException.Reference::getFieldName)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce((first, second) -> second)
+                    .orElse("field");
+
+            String targetType = ife.getTargetType().getSimpleName();
+            String errorMsg = "Invalid value '" + ife.getValue() + "' for field '" + fieldName + "'; expected valid " + targetType;
+            fieldErrors.put(fieldName, errorMsg);
+            message = errorMsg;
+        }
+
+        return buildError(HttpStatus.BAD_REQUEST, message, fieldErrors.isEmpty() ? null : fieldErrors, request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(
             MethodArgumentNotValidException ex, HttpServletRequest request) {

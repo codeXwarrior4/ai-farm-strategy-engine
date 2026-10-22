@@ -3,9 +3,13 @@ package com.farmengine.service;
 import com.farmengine.dto.CreateFarmerProfileRequest;
 import com.farmengine.dto.FarmerProfileResponse;
 import com.farmengine.dto.UpdateFarmerProfileRequest;
+import com.farmengine.entity.IrrigationSource;
+import com.farmengine.entity.RiskTolerance;
+import com.farmengine.entity.SoilType;
 import com.farmengine.entity.User;
 import com.farmengine.exception.ConflictException;
 import com.farmengine.exception.ResourceNotFoundException;
+import com.farmengine.exception.ValidationException;
 import com.farmengine.repository.FarmerProfileRepository;
 import com.farmengine.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +21,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -196,5 +202,183 @@ class FarmerProfileServiceTest {
 
         assertThatThrownBy(() -> farmerProfileService.updateProfile(testUserId, updateReq))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 2A — Farm Data Foundation & Cross-Field Validation Tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createProfile should persist all Phase 2A agronomic fields")
+    void createProfile_withAllPhase2AFields_persistsSuccessfully() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Kisan Lal");
+        req.setYearsOfExperience(15);
+        req.setPreferredLanguage("hi");
+        req.setTotalLandHectares(new BigDecimal("5.0000"));
+        req.setCultivableHectares(new BigDecimal("4.2500"));
+        req.setSoilType(SoilType.BLACK);
+        req.setIrrigationSource(IrrigationSource.BOREWELL);
+        req.setWaterAvailabilityMonths(9);
+        req.setWorkingCapitalInr(new BigDecimal("75000.00"));
+        req.setRiskTolerance(RiskTolerance.MEDIUM);
+
+        FarmerProfileResponse response = farmerProfileService.createProfile(testUserId, req);
+
+        assertThat(response.getId()).isNotNull();
+        assertThat(response.getTotalLandHectares()).isEqualByComparingTo("5.0000");
+        assertThat(response.getCultivableHectares()).isEqualByComparingTo("4.2500");
+        assertThat(response.getSoilType()).isEqualTo(SoilType.BLACK);
+        assertThat(response.getIrrigationSource()).isEqualTo(IrrigationSource.BOREWELL);
+        assertThat(response.getWaterAvailabilityMonths()).isEqualTo(9);
+        assertThat(response.getWorkingCapitalInr()).isEqualByComparingTo("75000.00");
+        assertThat(response.getRiskTolerance()).isEqualTo(RiskTolerance.MEDIUM);
+    }
+
+    @Test
+    @DisplayName("createProfile should throw ValidationException when cultivable land exceeds total land")
+    void createProfile_cultivableExceedsTotalLand_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Kisan Lal");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setTotalLandHectares(new BigDecimal("2.0000"));
+        req.setCultivableHectares(new BigDecimal("3.5000"));
+
+        assertThatThrownBy(() -> farmerProfileService.createProfile(testUserId, req))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("cultivableHectares");
+                    assertThat(ve.getFieldErrors().get("cultivableHectares"))
+                            .contains("cannot exceed total land");
+                });
+    }
+
+    @Test
+    @DisplayName("createProfile should throw ValidationException when cultivable land is supplied without total land")
+    void createProfile_cultivableWithoutTotalLand_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Kisan Lal");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setCultivableHectares(new BigDecimal("2.0000"));
+
+        assertThatThrownBy(() -> farmerProfileService.createProfile(testUserId, req))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("cultivableHectares");
+                });
+    }
+
+    @Test
+    @DisplayName("updateProfile should update Phase 2A fields")
+    void updateProfile_withPhase2AFields_updatesSuccessfully() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Initial Name");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setTotalLandHectares(new BigDecimal("10.0000"));
+        req.setCultivableHectares(new BigDecimal("6.0000"));
+        farmerProfileService.createProfile(testUserId, req);
+
+        UpdateFarmerProfileRequest updateReq = new UpdateFarmerProfileRequest();
+        updateReq.setFullName("Updated Name");
+        updateReq.setYearsOfExperience(6);
+        updateReq.setPreferredLanguage("en");
+        updateReq.setTotalLandHectares(new BigDecimal("12.0000"));
+        updateReq.setCultivableHectares(new BigDecimal("8.0000"));
+        updateReq.setSoilType(SoilType.ALLUVIAL);
+        updateReq.setIrrigationSource(IrrigationSource.CANAL);
+        updateReq.setWaterAvailabilityMonths(12);
+        updateReq.setWorkingCapitalInr(new BigDecimal("120000.00"));
+        updateReq.setRiskTolerance(RiskTolerance.LOW);
+
+        FarmerProfileResponse updated = farmerProfileService.updateProfile(testUserId, updateReq);
+
+        assertThat(updated.getTotalLandHectares()).isEqualByComparingTo("12.0000");
+        assertThat(updated.getCultivableHectares()).isEqualByComparingTo("8.0000");
+        assertThat(updated.getSoilType()).isEqualTo(SoilType.ALLUVIAL);
+        assertThat(updated.getIrrigationSource()).isEqualTo(IrrigationSource.CANAL);
+        assertThat(updated.getWaterAvailabilityMonths()).isEqualTo(12);
+        assertThat(updated.getWorkingCapitalInr()).isEqualByComparingTo("120000.00");
+        assertThat(updated.getRiskTolerance()).isEqualTo(RiskTolerance.LOW);
+    }
+
+    @Test
+    @DisplayName("updateProfile should use effective total land when only changing cultivable land")
+    void updateProfile_changeOnlyCultivableWithinExistingTotal_succeeds() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Farmer With Land");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setTotalLandHectares(new BigDecimal("10.0000"));
+        req.setCultivableHectares(new BigDecimal("5.0000"));
+        farmerProfileService.createProfile(testUserId, req);
+
+        // Update only cultivable hectares without passing totalLandHectares
+        UpdateFarmerProfileRequest updateReq = new UpdateFarmerProfileRequest();
+        updateReq.setFullName("Farmer With Land");
+        updateReq.setYearsOfExperience(5);
+        updateReq.setPreferredLanguage("en");
+        updateReq.setCultivableHectares(new BigDecimal("9.0000"));
+
+        FarmerProfileResponse updated = farmerProfileService.updateProfile(testUserId, updateReq);
+
+        assertThat(updated.getCultivableHectares()).isEqualByComparingTo("9.0000");
+        assertThat(updated.getTotalLandHectares()).isEqualByComparingTo("10.0000");
+    }
+
+    @Test
+    @DisplayName("updateProfile should fail when updated cultivable land exceeds existing total land")
+    void updateProfile_changeOnlyCultivableExceedingExistingTotal_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Farmer With Land");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setTotalLandHectares(new BigDecimal("10.0000"));
+        req.setCultivableHectares(new BigDecimal("5.0000"));
+        farmerProfileService.createProfile(testUserId, req);
+
+        // Update cultivable hectares to 12 (exceeding existing 10) without passing totalLandHectares
+        UpdateFarmerProfileRequest updateReq = new UpdateFarmerProfileRequest();
+        updateReq.setFullName("Farmer With Land");
+        updateReq.setYearsOfExperience(5);
+        updateReq.setPreferredLanguage("en");
+        updateReq.setCultivableHectares(new BigDecimal("12.0000"));
+
+        assertThatThrownBy(() -> farmerProfileService.updateProfile(testUserId, updateReq))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("cultivableHectares");
+                });
+    }
+
+    @Test
+    @DisplayName("updateProfile should fail when total land is reduced below existing cultivable land")
+    void updateProfile_reduceTotalLandBelowExistingCultivable_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Farmer With Land");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setTotalLandHectares(new BigDecimal("10.0000"));
+        req.setCultivableHectares(new BigDecimal("8.0000"));
+        farmerProfileService.createProfile(testUserId, req);
+
+        // Reduce total land to 6 (below existing cultivable 8) without passing cultivableHectares
+        UpdateFarmerProfileRequest updateReq = new UpdateFarmerProfileRequest();
+        updateReq.setFullName("Farmer With Land");
+        updateReq.setYearsOfExperience(5);
+        updateReq.setPreferredLanguage("en");
+        updateReq.setTotalLandHectares(new BigDecimal("6.0000"));
+
+        assertThatThrownBy(() -> farmerProfileService.updateProfile(testUserId, updateReq))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("cultivableHectares");
+                });
     }
 }

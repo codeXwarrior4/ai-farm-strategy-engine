@@ -4,6 +4,29 @@
 
 import { apiClient, handleAxiosError } from './apiClient';
 
+export type SoilType =
+  | 'ALLUVIAL'
+  | 'BLACK'
+  | 'RED'
+  | 'LATERITE'
+  | 'SANDY'
+  | 'LOAMY'
+  | 'CLAYEY'
+  | 'OTHER';
+
+export type IrrigationSource =
+  | 'BOREWELL'
+  | 'OPEN_WELL'
+  | 'CANAL'
+  | 'RIVER'
+  | 'RAIN_FED'
+  | 'TANK'
+  | 'DRIP'
+  | 'SPRINKLER'
+  | 'OTHER';
+
+export type RiskTolerance = 'LOW' | 'MEDIUM' | 'HIGH';
+
 export interface CreateFarmerProfileRequest {
   fullName: string;
   phoneNumber?: string;
@@ -12,6 +35,30 @@ export interface CreateFarmerProfileRequest {
   totalLandHectares?: number;
   yearsOfExperience: number;
   preferredLanguage: string;
+  // Phase 2A fields
+  cultivableHectares?: number;
+  soilType?: SoilType;
+  irrigationSource?: IrrigationSource;
+  waterAvailabilityMonths?: number;
+  workingCapitalInr?: number;
+  riskTolerance?: RiskTolerance;
+}
+
+export interface UpdateFarmerProfileRequest {
+  fullName: string;
+  phoneNumber?: string;
+  primaryState?: string;
+  primaryDistrict?: string;
+  totalLandHectares?: number;
+  yearsOfExperience: number;
+  preferredLanguage: string;
+  // Phase 2A fields
+  cultivableHectares?: number;
+  soilType?: SoilType;
+  irrigationSource?: IrrigationSource;
+  waterAvailabilityMonths?: number;
+  workingCapitalInr?: number;
+  riskTolerance?: RiskTolerance;
 }
 
 export interface FarmerProfileResponse {
@@ -20,12 +67,19 @@ export interface FarmerProfileResponse {
   ownerUsername: string;
   ownerEmail: string;
   fullName: string;
-  phoneNumber?: string;
-  primaryState?: string;
-  primaryDistrict?: string;
-  totalLandHectares?: number;
+  phoneNumber?: string | null;
+  primaryState?: string | null;
+  primaryDistrict?: string | null;
+  totalLandHectares?: number | null;
   yearsOfExperience: number;
   preferredLanguage: string;
+  // Phase 2A fields
+  cultivableHectares?: number | null;
+  soilType?: SoilType | null;
+  irrigationSource?: IrrigationSource | null;
+  waterAvailabilityMonths?: number | null;
+  workingCapitalInr?: number | null;
+  riskTolerance?: RiskTolerance | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +111,25 @@ export async function getFarmerProfile(userId: number): Promise<FarmerProfileRes
   try {
     const response = await apiClient.get<FarmerProfileResponse>(
       `/users/${userId}/farmer-profile`
+    );
+    return response.data;
+  } catch (error) {
+    return handleAxiosError(error);
+  }
+}
+
+/**
+ * Update the existing farmer profile for a given user.
+ * PUT /api/v1/users/{userId}/farmer-profile
+ */
+export async function updateFarmerProfile(
+  userId: number,
+  data: UpdateFarmerProfileRequest
+): Promise<FarmerProfileResponse> {
+  try {
+    const response = await apiClient.put<FarmerProfileResponse>(
+      `/users/${userId}/farmer-profile`,
+      data
     );
     return response.data;
   } catch (error) {
