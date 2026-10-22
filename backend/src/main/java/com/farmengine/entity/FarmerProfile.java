@@ -1,0 +1,68 @@
+package com.farmengine.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+/**
+ * A farmer's profile containing self-reported agronomic and contextual data.
+ * Each user may have at most one farmer profile.
+ *
+ * Future phases will add associated farms, soil profiles, water availability,
+ * financial constraints, preferred crops, strategies, and decision audit records
+ * as separate linked tables.
+ */
+@Entity
+@Table(name = "farmer_profiles")
+@Getter
+@Setter
+@NoArgsConstructor
+public class FarmerProfile {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /**
+     * The user who owns this profile. One-to-one: each user has at most one profile.
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false, unique = true)
+    private User owner;
+
+    @Column(name = "full_name", nullable = false, length = 200)
+    private String fullName;
+
+    @Column(name = "phone_number", length = 20)
+    private String phoneNumber;
+
+    @Column(name = "primary_state", length = 100)
+    private String primaryState;
+
+    @Column(name = "primary_district", length = 100)
+    private String primaryDistrict;
+
+    /** Approximate total landholding in hectares. Nullable if unknown. */
+    @Column(name = "total_land_hectares", precision = 10, scale = 4)
+    private BigDecimal totalLandHectares;
+
+    @Column(name = "years_of_experience", nullable = false)
+    private Integer yearsOfExperience = 0;
+
+    @Column(name = "preferred_language", nullable = false, length = 10)
+    private String preferredLanguage = "en";
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+}
