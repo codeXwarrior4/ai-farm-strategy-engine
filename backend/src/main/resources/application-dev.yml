@@ -34,3 +34,14 @@ app:
     expiration-ms: 86400000
   cors:
     allowed-origins: http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:4173
+  market:
+    data-gov-in:
+      base-url: ${DATA_GOV_IN_BASE_URL:https://api.data.gov.in/resource}
+      resource-id: ${DATA_GOV_IN_RESOURCE_ID:9ef84268-d588-465a-a308-a864a43d0070}
+      api-key: ${DATA_GOV_IN_API_KEY:}
+      connect-timeout-ms: 3000
+      read-timeout-ms: 10000
+      page-size: 50
+      max-pages: 5
+    freshness-threshold-days: 7
+

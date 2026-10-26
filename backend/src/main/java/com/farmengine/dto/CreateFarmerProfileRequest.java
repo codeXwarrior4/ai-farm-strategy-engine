@@ -94,4 +94,18 @@ public class CreateFarmerProfileRequest {
 
     /** Self-reported risk tolerance. Must be a valid RiskTolerance enum name if provided. */
     private RiskTolerance riskTolerance;
+
+    // -------------------------------------------------------------------------
+    // Phase 2B.1 fields — Farm coordinates (optional, must be provided together)
+    // -------------------------------------------------------------------------
+
+    /** Farm latitude in decimal degrees (-90.0 to 90.0). */
+    @DecimalMin(value = "-90.000000", message = "Latitude must be between -90 and 90 degrees")
+    @DecimalMax(value = "90.000000", message = "Latitude must be between -90 and 90 degrees")
+    private BigDecimal latitude;
+
+    /** Farm longitude in decimal degrees (-180.0 to 180.0). */
+    @DecimalMin(value = "-180.000000", message = "Longitude must be between -180 and 180 degrees")
+    @DecimalMax(value = "180.000000", message = "Longitude must be between -180 and 180 degrees")
+    private BigDecimal longitude;
 }

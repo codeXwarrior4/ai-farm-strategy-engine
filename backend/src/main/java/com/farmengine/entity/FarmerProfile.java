@@ -99,6 +99,18 @@ public class FarmerProfile {
     @Column(name = "risk_tolerance", length = 10)
     private RiskTolerance riskTolerance;
 
+    // -------------------------------------------------------------------------
+    // Phase 2B.1 — Farm Coordinates (optional, used for weather precision)
+    // -------------------------------------------------------------------------
+
+    /** Farm latitude in decimal degrees (-90.0 to 90.0). Optional. */
+    @Column(name = "latitude", precision = 9, scale = 6)
+    private BigDecimal latitude;
+
+    /** Farm longitude in decimal degrees (-180.0 to 180.0). Optional. */
+    @Column(name = "longitude", precision = 9, scale = 6)
+    private BigDecimal longitude;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

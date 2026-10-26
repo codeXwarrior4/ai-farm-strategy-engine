@@ -61,6 +61,8 @@ public class FarmerProfileService {
                 request.getWorkingCapitalInr()
         );
 
+        validateCoordinates(request.getLatitude(), request.getLongitude());
+
         FarmerProfile profile = new FarmerProfile();
         profile.setOwner(owner);
         // Phase 1 fields
@@ -78,6 +80,9 @@ public class FarmerProfileService {
         profile.setWaterAvailabilityMonths(request.getWaterAvailabilityMonths());
         profile.setWorkingCapitalInr(request.getWorkingCapitalInr());
         profile.setRiskTolerance(request.getRiskTolerance());
+        // Phase 2B.1 fields
+        profile.setLatitude(request.getLatitude());
+        profile.setLongitude(request.getLongitude());
 
         FarmerProfile saved = profileRepository.save(profile);
         log.info("Created farmer profile id={} for user id={}", saved.getId(), ownerId);
@@ -134,12 +139,34 @@ public class FarmerProfileService {
                 ? request.getWorkingCapitalInr()
                 : profile.getWorkingCapitalInr();
 
+        // Coordinates must be supplied together if either is provided in the update request
+        if ((request.getLatitude() != null && request.getLongitude() == null) ||
+                (request.getLatitude() == null && request.getLongitude() != null)) {
+            Map<String, String> coordErrors = new LinkedHashMap<>();
+            if (request.getLatitude() != null) {
+                coordErrors.put("longitude", "Latitude and longitude must be provided together");
+            } else {
+                coordErrors.put("latitude", "Latitude and longitude must be provided together");
+            }
+            throw new ValidationException("Validation failed", coordErrors);
+        }
+
+        BigDecimal effectiveLatitude = request.getLatitude() != null
+                ? request.getLatitude()
+                : profile.getLatitude();
+
+        BigDecimal effectiveLongitude = request.getLongitude() != null
+                ? request.getLongitude()
+                : profile.getLongitude();
+
         validateAgronomicData(
                 effectiveTotalLand,
                 effectiveCultivable,
                 effectiveWaterMonths,
                 effectiveWorkingCapital
         );
+
+        validateCoordinates(effectiveLatitude, effectiveLongitude);
 
         // Phase 1 fields
         profile.setFullName(request.getFullName());
@@ -158,9 +185,34 @@ public class FarmerProfileService {
         profile.setWorkingCapitalInr(effectiveWorkingCapital);
         profile.setRiskTolerance(request.getRiskTolerance() != null ? request.getRiskTolerance() : profile.getRiskTolerance());
 
+        // Phase 2B.1 fields
+        profile.setLatitude(effectiveLatitude);
+        profile.setLongitude(effectiveLongitude);
+
         FarmerProfile updated = profileRepository.save(profile);
         log.info("Updated farmer profile id={} for user id={}", updated.getId(), ownerId);
         return toResponse(updated);
+    }
+
+    private void validateCoordinates(BigDecimal latitude, BigDecimal longitude) {
+        Map<String, String> errors = new LinkedHashMap<>();
+
+        if (latitude != null && longitude == null) {
+            errors.put("longitude", "Latitude and longitude must be provided together");
+        } else if (latitude == null && longitude != null) {
+            errors.put("latitude", "Latitude and longitude must be provided together");
+        } else if (latitude != null && longitude != null) {
+            if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0 || latitude.compareTo(BigDecimal.valueOf(90)) > 0) {
+                errors.put("latitude", "Latitude must be between -90 and 90 degrees");
+            }
+            if (longitude.compareTo(BigDecimal.valueOf(-180)) < 0 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
+                errors.put("longitude", "Longitude must be between -180 and 180 degrees");
+            }
+        }
+
+        if (!errors.isEmpty()) {
+            throw new ValidationException("Validation failed", errors);
+        }
     }
 
     private void validateAgronomicData(BigDecimal totalLand, BigDecimal cultivableLand,
@@ -256,6 +308,9 @@ public class FarmerProfileService {
                 .waterAvailabilityMonths(profile.getWaterAvailabilityMonths())
                 .workingCapitalInr(profile.getWorkingCapitalInr())
                 .riskTolerance(profile.getRiskTolerance())
+                // Phase 2B.1 fields
+                .latitude(profile.getLatitude())
+                .longitude(profile.getLongitude())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();

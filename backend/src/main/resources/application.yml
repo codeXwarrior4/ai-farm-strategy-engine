@@ -35,3 +35,20 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  weather:
+    open-meteo:
+      forecast-url: ${OPEN_METEO_FORECAST_URL:https://api.open-meteo.com/v1/forecast}
+      geocoding-url: ${OPEN_METEO_GEOCODING_URL:https://geocoding-api.open-meteo.com/v1/search}
+    connect-timeout-ms: ${WEATHER_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${WEATHER_READ_TIMEOUT_MS:5000}
+  market:
+    data-gov-in:
+      base-url: ${DATA_GOV_IN_BASE_URL:https://api.data.gov.in/resource}
+      resource-id: ${DATA_GOV_IN_RESOURCE_ID:9ef84268-d588-465a-a308-a864a43d0070}
+      api-key: ${DATA_GOV_IN_API_KEY:}
+      connect-timeout-ms: ${MARKET_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${MARKET_READ_TIMEOUT_MS:10000}
+      page-size: ${MARKET_PAGE_SIZE:50}
+      max-pages: ${MARKET_MAX_PAGES:5}
+    freshness-threshold-days: ${MARKET_FRESHNESS_THRESHOLD_DAYS:7}
+

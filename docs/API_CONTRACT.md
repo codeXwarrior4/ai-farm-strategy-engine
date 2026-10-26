@@ -301,7 +301,223 @@ Checks ML microservice liveness. Supports Cross-Origin Resource Sharing (CORS) f
 
 ---
 
-## 6. Planned Phase 2+ Endpoints (Roadmap / Not Implemented in Phase 1)
+---
+
+## 5. Farmer Weather Endpoints (Spring Boot Backend — Phase 2B.1)
+
+### Retrieve Farmer Weather
+#### `GET /api/v1/users/{userId}/farmer-profile/weather`
+Retrieves current meteorological observations and a 7-day forecast for the farmer's profile location using the Open-Meteo API.
+
+**Access:** Authenticated (Caller must be `userId`)  
+**Headers:** `Authorization: Bearer <token>`  
+
+#### Location Resolution Priority
+The backend resolves the geographic coordinates using the following deterministic hierarchy:
+1. **Saved Farm Coordinates (`FARM_COORDINATES`):** If `latitude` and `longitude` are present on the profile, the service queries the weather forecast using these exact farm coordinates.
+2. **District Geocoding Fallback (`DISTRICT_APPROXIMATION`):** If coordinates are absent but `primaryDistrict` is populated, the backend resolves the centroid coordinates via Open-Meteo's Geocoding API (disambiguating with `primaryState` and country `IN`). Ambiguous results (multiple conflicting administrative divisions without matching state, or results not matching the specified state) are safely rejected with `502 Bad Gateway`. Geocoded coordinates are **never** silently treated as exact farm coordinates, nor are they persisted into the profile.
+3. **Missing Location Error:** If neither coordinates nor district are present, the request fails with `422 Unprocessable Entity`.
+
+#### Success Response (`200 OK`):
+```json
+{
+  "farmerProfileId": 1,
+  "ownerId": 1,
+  "location": {
+    "latitude": 23.242000,
+    "longitude": 69.666900,
+    "primaryDistrict": "Kutch",
+    "primaryState": "Gujarat",
+    "precision": "FARM_COORDINATES",
+    "resolvedLocationName": "Kutch, Gujarat",
+    "timezone": "Asia/Kolkata"
+  },
+  "current": {
+    "time": "2026-10-25T11:15",
+    "temperatureC": 31.5,
+    "relativeHumidityPercent": 58,
+    "apparentTemperatureC": 34.0,
+    "precipitationMm": 0.0,
+    "windSpeedKmh": 14.5,
+    "windDirectionDegrees": 240,
+    "weatherCode": 1,
+    "weatherDescription": "Mainly clear"
+  },
+  "forecast": [
+    {
+      "date": "2026-10-25",
+      "tempMinC": 22.0,
+      "tempMaxC": 33.5,
+      "precipitationSumMm": 0.0,
+      "precipitationProbabilityMax": 10,
+      "windSpeedMaxKmh": 16.0,
+      "evapotranspirationMm": 4.8,
+      "weatherCode": 1,
+      "weatherDescription": "Mainly clear"
+    }
+  ],
+  "provider": {
+    "providerName": "Open-Meteo",
+    "attribution": "Weather data by Open-Meteo.com",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://open-meteo.com"
+  },
+  "retrievedAt": "2026-10-25T11:15:30.123456"
+}
+```
+
+#### Error Responses
+| HTTP Status | Error Type | Condition |
+|---|---|---|
+| `401 Unauthorized` | `Unauthorized` | Missing, expired, or invalid JWT Bearer token |
+| `403 Forbidden` | `Forbidden` | Authenticated user ID does not match `{userId}` path parameter |
+| `404 Not Found` | `Not Found` | User or farmer profile does not exist |
+| `422 Unprocessable Entity` | `Unprocessable Entity` | Farmer profile lacks coordinates and district |
+| `502 Bad Gateway` | `Bad Gateway` | External provider returned HTTP 5xx/4xx/429, geocoding returned no match, or malformed payload |
+| `504 Gateway Timeout` | `Gateway Timeout` | External provider exceeded connection or read timeout thresholds |
+
+#### Provider Attribution & Licensing Requirement
+Data is provided under the [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) license. Any user-facing presentation of this data must clearly display the attribution: **"Weather data by Open-Meteo.com"** linking to `https://open-meteo.com`.
+
+#### Backend Configuration Properties
+```yaml
+app:
+  weather:
+    open-meteo:
+      forecast-url: ${OPEN_METEO_FORECAST_URL:https://api.open-meteo.com/v1/forecast}
+      geocoding-url: ${OPEN_METEO_GEOCODING_URL:https://geocoding-api.open-meteo.com/v1/search}
+    connect-timeout-ms: ${WEATHER_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${WEATHER_READ_TIMEOUT_MS:5000}
+```
+
+---
+
+## 6. Farmer Market Prices (Mandi Ingestion & Querying)
+
+### Retrieve Farmer Mandi Market Prices
+#### `GET /api/v1/users/{userId}/farmer-profile/market-prices`
+Retrieves locally persisted mandi market price observations for the authenticated farmer's configured primary state and district (`primaryState` and `primaryDistrict`).
+
+**Access:** Authenticated (`ROLE_FARMER` or `ROLE_ADMIN`), strictly enforcing user ownership (`principal.id == {userId}`).  
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `commodity` | string | No | `null` | Optional case-insensitive filter (e.g. `wheat`). Exact name match; does not normalize or merge distinct commodities. Stored source commodity name is preserved in the response. |
+| `arrivalDate` | string (ISO-8601 date `YYYY-MM-DD`) | No | `null` | Optional exact arrival date filter (e.g. `2026-10-25`). Malformed dates return `400 Bad Request`. |
+| `limit` | integer | No | `20` | Bounded pagination limit. Allowed range: `1` to `50`. Values `< 1` or `> 50` return `400 Bad Request`. |
+
+**Sorting & Determinism:**
+Results are ordered deterministically by:
+1. `arrivalDate DESC` (most recent market arrivals first)
+2. `market ASC`
+3. `commodity ASC`
+4. `id ASC`
+
+**Response (200 OK):**
+```json
+{
+  "farmerProfileId": 1,
+  "ownerId": 1,
+  "queryState": "Punjab",
+  "queryDistrict": "Ludhiana",
+  "queryCommodity": "wheat",
+  "recordCount": 1,
+  "records": [
+    {
+      "id": 101,
+      "market": "Ludhiana Mandi",
+      "commodity": "Wheat",
+      "variety": "PBW-343",
+      "grade": "FAQ",
+      "arrivalDate": "2026-10-25",
+      "minPrice": 2250.00,
+      "maxPrice": 2350.00,
+      "modalPrice": 2300.00,
+      "currency": "INR",
+      "priceUnit": "Rs/Quintal",
+      "retrievalTimestamp": "2026-10-25T14:00:00",
+      "sourceProvider": "data.gov.in"
+    }
+  ],
+  "freshness": {
+    "dataAvailable": true,
+    "latestArrivalDate": "2026-10-25",
+    "daysOld": 0,
+    "isStale": false,
+    "freshnessThresholdDays": 7,
+    "freshnessStatus": "FRESH"
+  },
+  "attribution": {
+    "providerName": "data.gov.in",
+    "datasetName": "Current Daily Price of Various Commodities from Various Markets (Mandi Prices) - AGMARKNET",
+    "licenseName": "Government Open Data License - India (GODL)",
+    "licenseUrl": "https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf",
+    "disclaimer": "Mandi modal prices represent wholesale market auction rates and do not guarantee the net price received by an individual farmer. Transport, handling, grading, and local market deductions may apply."
+  },
+  "retrievedAt": "2026-10-25T14:30:00"
+}
+```
+
+**Empty Local Dataset Behavior (200 OK):**
+When no records are available for the farmer's state/district (or matching the commodity/date filters), the endpoint returns `200 OK` with an empty array `records: []`, `recordCount: 0`, and `freshness.dataAvailable: false`, rather than inventing placeholder values.
+
+```json
+{
+  "farmerProfileId": 1,
+  "ownerId": 1,
+  "queryState": "Punjab",
+  "queryDistrict": "Ludhiana",
+  "queryCommodity": "Vanilla",
+  "recordCount": 0,
+  "records": [],
+  "freshness": {
+    "dataAvailable": false,
+    "latestArrivalDate": null,
+    "daysOld": null,
+    "isStale": false,
+    "freshnessThresholdDays": 7,
+    "freshnessStatus": "NO_DATA"
+  },
+  "attribution": {
+    "providerName": "data.gov.in",
+    "datasetName": "Current Daily Price of Various Commodities from Various Markets (Mandi Prices) - AGMARKNET",
+    "licenseName": "Government Open Data License - India (GODL)",
+    "licenseUrl": "https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf",
+    "disclaimer": "Mandi modal prices represent wholesale market auction rates and do not guarantee the net price received by an individual farmer. Transport, handling, grading, and local market deductions may apply."
+  },
+  "retrievedAt": "2026-10-25T14:30:00"
+}
+```
+
+#### Error Responses
+| HTTP Status | Error Type | Condition |
+|---|---|---|
+| `400 Bad Request` | `Bad Request` | Limit `< 1` or `> 50`, or malformed `arrivalDate` |
+| `401 Unauthorized` | `Unauthorized` | Missing, expired, or invalid JWT Bearer token |
+| `403 Forbidden` | `Forbidden` | Authenticated user ID does not match `{userId}` path parameter |
+| `404 Not Found` | `Not Found` | User or farmer profile does not exist |
+
+#### Provider Attribution & Licensing Requirement
+Data is provided under the [Government Open Data License - India (GODL)](https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf). Any user-facing presentation of this data must clearly display the attribution to **data.gov.in (AGMARKNET Daily Mandi Prices)** and include the advisory disclaimer.
+
+#### Backend Configuration Properties
+```yaml
+app:
+  market:
+    data-gov-in:
+      base-url: ${DATA_GOV_IN_BASE_URL:https://api.data.gov.in/resource}
+      resource-id: ${DATA_GOV_IN_RESOURCE_ID:9ef84268-d588-465a-a308-a864a43d0070}
+      api-key: ${DATA_GOV_IN_API_KEY:}
+      connect-timeout-ms: ${MARKET_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${MARKET_READ_TIMEOUT_MS:10000}
+      page-size: ${MARKET_PAGE_SIZE:50}
+      max-pages: ${MARKET_MAX_PAGES:5}
+    freshness-threshold-days: ${MARKET_FRESHNESS_THRESHOLD_DAYS:7}
+```
+
+---
+
+## 7. Planned Phase 2+ Endpoints (Roadmap / Not Implemented in Phase 1)
 
 > [!NOTE]
 > The following endpoints are architectural roadmap targets and are **NOT** implemented in Phase 1.

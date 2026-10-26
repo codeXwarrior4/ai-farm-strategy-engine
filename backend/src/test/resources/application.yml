@@ -25,3 +25,20 @@ app:
     expiration-ms: 3600000
   cors:
     allowed-origins: http://localhost:5173
+  weather:
+    open-meteo:
+      forecast-url: https://api.open-meteo.com/v1/forecast
+      geocoding-url: https://geocoding-api.open-meteo.com/v1/search
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  market:
+    data-gov-in:
+      base-url: https://api.data.gov.in/resource
+      resource-id: 9ef84268-d588-465a-a308-a864a43d0070
+      api-key: mock-test-key
+      connect-timeout-ms: 1000
+      read-timeout-ms: 2000
+      page-size: 50
+      max-pages: 5
+    freshness-threshold-days: 7
+

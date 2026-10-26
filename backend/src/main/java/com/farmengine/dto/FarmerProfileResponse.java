@@ -48,7 +48,14 @@ public class FarmerProfileResponse {
     private IrrigationSource irrigationSource;
     private Integer waterAvailabilityMonths;
     private BigDecimal workingCapitalInr;
+
     private RiskTolerance riskTolerance;
+
+    // -------------------------------------------------------------------------
+    // Phase 2B.1 — Farm Coordinates (optional)
+    // -------------------------------------------------------------------------
+    private BigDecimal latitude;
+    private BigDecimal longitude;
 
     // -------------------------------------------------------------------------
     // Timestamps

@@ -195,11 +195,19 @@ export default function StatusPage() {
               </p>
             </Link>
 
-            <div className="glass-card p-5 opacity-50 cursor-not-allowed">
+            <Link
+              to="/profile"
+              id="go-to-strategy-link"
+              className="glass-card p-5 hover:bg-white/10 transition-colors duration-200 group"
+            >
               <div className="text-2xl mb-2">📊</div>
-              <h3 className="font-semibold text-slate-400">Strategy Dashboard</h3>
-              <p className="text-sm text-slate-600 mt-1">Coming in Phase 2+</p>
-            </div>
+              <h3 className="font-semibold text-slate-200 group-hover:text-emerald-300 transition-colors">
+                Composite Strategy Engine
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Evaluate multi-dimensional agronomic, financial, market, and weather crop strategy.
+              </p>
+            </Link>
           </div>
         </section>
 

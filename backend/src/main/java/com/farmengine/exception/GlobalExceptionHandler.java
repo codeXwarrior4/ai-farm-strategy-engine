@@ -36,6 +36,49 @@ public class GlobalExceptionHandler {
         return buildError(HttpStatus.CONFLICT, ex.getMessage(), null, request);
     }
 
+    @ExceptionHandler(LocationUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleLocationUnavailable(
+            LocationUnavailableException ex, HttpServletRequest request) {
+        log.warn("Location unavailable for weather query at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), null, request);
+    }
+
+    @ExceptionHandler(WeatherTimeoutException.class)
+    public ResponseEntity<ApiErrorResponse> handleWeatherTimeout(
+            WeatherTimeoutException ex, HttpServletRequest request) {
+        log.error("Weather provider timeout at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.GATEWAY_TIMEOUT, ex.getMessage(), null, request);
+    }
+
+    @ExceptionHandler(WeatherProviderException.class)
+    public ResponseEntity<ApiErrorResponse> handleWeatherProvider(
+            WeatherProviderException ex, HttpServletRequest request) {
+        log.error("Weather provider error at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.BAD_GATEWAY, ex.getMessage(), null, request);
+    }
+
+    @ExceptionHandler(MarketTimeoutException.class)
+    public ResponseEntity<ApiErrorResponse> handleMarketTimeout(
+            MarketTimeoutException ex, HttpServletRequest request) {
+        log.error("Market provider timeout at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.GATEWAY_TIMEOUT, ex.getMessage(), null, request);
+    }
+
+    @ExceptionHandler(MarketRateLimitException.class)
+    public ResponseEntity<ApiErrorResponse> handleMarketRateLimit(
+            MarketRateLimitException ex, HttpServletRequest request) {
+        log.warn("Market provider rate limited at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), null, request);
+    }
+
+    @ExceptionHandler(MarketProviderException.class)
+    public ResponseEntity<ApiErrorResponse> handleMarketProvider(
+            MarketProviderException ex, HttpServletRequest request) {
+        log.error("Market provider error at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.BAD_GATEWAY, ex.getMessage(), null, request);
+    }
+
+
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ApiErrorResponse> handleValidationException(
             ValidationException ex, HttpServletRequest request) {
@@ -83,6 +126,25 @@ public class GlobalExceptionHandler {
         }
         log.warn("Validation failed: {}", fieldErrors);
         return buildError(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors, request);
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodArgumentTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex,
+            HttpServletRequest request) {
+        String paramName = ex.getName();
+        String paramValue = ex.getValue() != null ? ex.getValue().toString() : "null";
+        String message = "Invalid value '" + paramValue + "' for parameter '" + paramName + "'";
+        Map<String, String> fieldErrors = Map.of(paramName, message);
+        log.warn("Type mismatch on parameter '{}': value='{}'", paramName, paramValue);
+        return buildError(HttpStatus.BAD_REQUEST, message, fieldErrors, request);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(
+            IllegalArgumentException ex, HttpServletRequest request) {
+        log.warn("Illegal argument at {}: {}", request.getRequestURI(), ex.getMessage());
+        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage(), null, request);
     }
 
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)

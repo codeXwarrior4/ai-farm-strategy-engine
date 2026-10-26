@@ -42,6 +42,9 @@ export interface CreateFarmerProfileRequest {
   waterAvailabilityMonths?: number;
   workingCapitalInr?: number;
   riskTolerance?: RiskTolerance;
+  // Phase 2B.1 fields
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface UpdateFarmerProfileRequest {
@@ -59,6 +62,9 @@ export interface UpdateFarmerProfileRequest {
   waterAvailabilityMonths?: number;
   workingCapitalInr?: number;
   riskTolerance?: RiskTolerance;
+  // Phase 2B.1 fields
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface FarmerProfileResponse {
@@ -80,6 +86,9 @@ export interface FarmerProfileResponse {
   waterAvailabilityMonths?: number | null;
   workingCapitalInr?: number | null;
   riskTolerance?: RiskTolerance | null;
+  // Phase 2B.1 fields
+  latitude?: number | null;
+  longitude?: number | null;
   createdAt: string;
   updatedAt: string;
 }

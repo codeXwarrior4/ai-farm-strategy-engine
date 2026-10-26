@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { FarmerWeatherSection } from '../components/FarmerWeatherSection';
+import { FarmerMarketPricesSection } from '../components/FarmerMarketPricesSection';
+import { FarmerStrategySection } from '../components/FarmerStrategySection';
 import {
   createFarmerProfile,
   getFarmerProfile,
@@ -33,6 +36,8 @@ interface ProfileFormData {
   waterAvailabilityMonths: string;
   workingCapitalInr: string;
   riskTolerance: RiskTolerance | '';
+  latitude: string;
+  longitude: string;
 }
 
 const initialFormData: ProfileFormData = {
@@ -49,10 +54,14 @@ const initialFormData: ProfileFormData = {
   waterAvailabilityMonths: '',
   workingCapitalInr: '',
   riskTolerance: '',
+  latitude: '',
+  longitude: '',
 };
 
 export default function FarmerProfilePage() {
   const [userId, setUserId] = useState('');
+  const [weatherRefreshKey, setWeatherRefreshKey] = useState(0);
+  const [marketRefreshKey, setMarketRefreshKey] = useState(0);
   const [token, setToken] = useState(() => getAuthToken() || '');
   const [isExistingProfile, setIsExistingProfile] = useState(false);
   const [profileData, setProfileData] = useState<FarmerProfileResponse | null>(null);
@@ -94,6 +103,12 @@ export default function FarmerProfilePage() {
         ? profile.workingCapitalInr.toString()
         : '',
       riskTolerance: profile.riskTolerance || '',
+      latitude: profile.latitude !== null && profile.latitude !== undefined
+        ? profile.latitude.toString()
+        : '',
+      longitude: profile.longitude !== null && profile.longitude !== undefined
+        ? profile.longitude.toString()
+        : '',
     });
   }
 
@@ -160,6 +175,23 @@ export default function FarmerProfilePage() {
       }
     }
 
+    const latStr = form.latitude.trim();
+    const lonStr = form.longitude.trim();
+    if (latStr && !lonStr) {
+      errors.longitude = 'Latitude and longitude must be provided together';
+    } else if (!latStr && lonStr) {
+      errors.latitude = 'Latitude and longitude must be provided together';
+    } else if (latStr && lonStr) {
+      const lat = parseFloat(latStr);
+      const lon = parseFloat(lonStr);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        errors.latitude = 'Latitude must be between -90 and 90 degrees';
+      }
+      if (isNaN(lon) || lon < -180 || lon > 180) {
+        errors.longitude = 'Longitude must be between -180 and 180 degrees';
+      }
+    }
+
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setGlobalError('Please fix the validation errors before submitting.');
@@ -187,6 +219,8 @@ export default function FarmerProfilePage() {
       setIsExistingProfile(true);
       setFetchState('success');
       setSuccessMessage(`Loaded existing profile for "${profile.fullName}" (Profile ID: ${profile.id}). You can update fields below.`);
+      setWeatherRefreshKey(k => k + 1);
+      setMarketRefreshKey(k => k + 1);
     } catch (error) {
       setFetchState('error');
       if (error instanceof ApiError) {
@@ -240,6 +274,8 @@ export default function FarmerProfilePage() {
       waterAvailabilityMonths: form.waterAvailabilityMonths.trim() ? parseInt(form.waterAvailabilityMonths, 10) : undefined,
       workingCapitalInr: form.workingCapitalInr.trim() ? parseFloat(form.workingCapitalInr) : undefined,
       riskTolerance: form.riskTolerance ? form.riskTolerance : undefined,
+      latitude: form.latitude.trim() ? parseFloat(form.latitude) : undefined,
+      longitude: form.longitude.trim() ? parseFloat(form.longitude) : undefined,
     };
 
     try {
@@ -256,6 +292,8 @@ export default function FarmerProfilePage() {
       setProfileData(saved);
       populateFormFromProfile(saved);
       setFormState('success');
+      setWeatherRefreshKey(k => k + 1);
+      setMarketRefreshKey(k => k + 1);
     } catch (error) {
       setFormState('error');
       if (error instanceof ApiError) {
@@ -310,7 +348,7 @@ export default function FarmerProfilePage() {
             ← Back to Status
           </Link>
           <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono">
-            Phase 2A · Farm Data Foundation
+            Phase 2B.1 · Farm Weather & Data Foundation
           </span>
         </div>
 
@@ -520,6 +558,57 @@ export default function FarmerProfilePage() {
                   {fieldErrors.primaryDistrict && (
                     <p className="text-xs text-red-400 mt-1">{fieldErrors.primaryDistrict}</p>
                   )}
+                </div>
+
+                {/* Farm GPS Coordinates (Phase 2B.1) */}
+                <div id="farm-location-section" className="md:col-span-2 bg-emerald-950/20 border border-emerald-800/30 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-emerald-400 text-sm font-semibold">Farm GPS Coordinates</span>
+                    <span className="text-xs text-slate-400 font-normal">(optional)</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Exact coordinates enable precise field-level weather forecasts and microclimate alerts. If omitted, weather will fall back to the district centroid.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="latitude" className="form-label text-xs">
+                        Latitude <span className="text-slate-500 font-normal">(-90° to 90°)</span>
+                      </label>
+                      <input
+                        id="latitude"
+                        name="latitude"
+                        type="number"
+                        step="any"
+                        value={form.latitude}
+                        onChange={handleInputChange}
+                        className="form-input"
+                        placeholder="e.g. 23.242000"
+                      />
+                      {fieldErrors.latitude && (
+                        <p className="text-xs text-red-400 mt-1">{fieldErrors.latitude}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="longitude" className="form-label text-xs">
+                        Longitude <span className="text-slate-500 font-normal">(-180° to 180°)</span>
+                      </label>
+                      <input
+                        id="longitude"
+                        name="longitude"
+                        type="number"
+                        step="any"
+                        value={form.longitude}
+                        onChange={handleInputChange}
+                        className="form-input"
+                        placeholder="e.g. 69.666900"
+                      />
+                      {fieldErrors.longitude && (
+                        <p className="text-xs text-red-400 mt-1">{fieldErrors.longitude}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -792,6 +881,54 @@ export default function FarmerProfilePage() {
           </div>
         </form>
 
+        
+        {/* Farm Weather Integration (Phase 2B.1) */}
+        <FarmerWeatherSection
+          userId={parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0)}
+          hasLocationData={Boolean(
+            (profileData?.latitude !== null && profileData?.latitude !== undefined &&
+             profileData?.longitude !== null && profileData?.longitude !== undefined) ||
+            (profileData?.primaryDistrict && profileData.primaryDistrict.trim().length > 0)
+          )}
+          onEditLocation={() => {
+            const el = document.getElementById('farm-location-section');
+            el?.scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('latitude')?.focus();
+          }}
+          refreshKey={weatherRefreshKey}
+        />
+
+        {/* Mandi Market Prices Integration (Phase 2B.2) */}
+        <FarmerMarketPricesSection
+          userId={parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0)}
+          primaryState={profileData?.primaryState || (form.primaryState.trim() ? form.primaryState.trim() : undefined)}
+          primaryDistrict={profileData?.primaryDistrict || (form.primaryDistrict.trim() ? form.primaryDistrict.trim() : undefined)}
+          onEditLocation={() => {
+            const el = document.getElementById('primaryDistrict');
+            el?.scrollIntoView({ behavior: 'smooth' });
+            el?.focus();
+          }}
+          refreshKey={marketRefreshKey}
+        />
+
+        {/* Composite Farm Strategy Engine (Phase 3 — Stage 5B.2) */}
+        <FarmerStrategySection
+          userId={parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0)}
+          hasProfile={isExistingProfile || !!profileData}
+          cultivableHectaresDefault={
+            profileData?.cultivableHectares !== null && profileData?.cultivableHectares !== undefined
+              ? profileData.cultivableHectares
+              : (form.cultivableHectares.trim() ? parseFloat(form.cultivableHectares) : null)
+          }
+          workingCapitalInrDefault={
+            profileData?.workingCapitalInr !== null && profileData?.workingCapitalInr !== undefined
+              ? profileData.workingCapitalInr
+              : (form.workingCapitalInr.trim() ? parseFloat(form.workingCapitalInr) : null)
+          }
+          primaryState={profileData?.primaryState || (form.primaryState.trim() ? form.primaryState.trim() : null)}
+          primaryDistrict={profileData?.primaryDistrict || (form.primaryDistrict.trim() ? form.primaryDistrict.trim() : null)}
+        />
+
         {/* Existing Profile Overview Card */}
         {profileData && (
           <section className="glass-card p-6 mt-8 border-emerald-500/20" aria-labelledby="summary-heading">
@@ -850,9 +987,18 @@ export default function FarmerProfilePage() {
                 <span className="text-slate-200 font-medium">{profileData.riskTolerance || '—'}</span>
               </div>
               <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                <span className="text-slate-500 block">Location</span>
+                <span className="text-slate-500 block">District / State</span>
                 <span className="text-slate-200 font-medium">
                   {[profileData.primaryDistrict, profileData.primaryState].filter(Boolean).join(', ') || '—'}
+                </span>
+              </div>
+              <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                <span className="text-slate-500 block">Farm Coordinates</span>
+                <span className="text-slate-200 font-medium font-mono text-xs">
+                  {profileData.latitude !== null && profileData.latitude !== undefined &&
+                   profileData.longitude !== null && profileData.longitude !== undefined
+                    ? `${Number(profileData.latitude).toFixed(4)}°, ${Number(profileData.longitude).toFixed(4)}°`
+                    : '— (District Fallback)'}
                 </span>
               </div>
             </div>

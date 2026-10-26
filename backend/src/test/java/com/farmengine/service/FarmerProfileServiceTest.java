@@ -381,4 +381,182 @@ class FarmerProfileServiceTest {
                     assertThat(ve.getFieldErrors()).containsKey("cultivableHectares");
                 });
     }
+
+    // -------------------------------------------------------------------------
+    // Phase 2B.1 — Farm Coordinates Unit Tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createProfile with valid coordinates persists latitude and longitude")
+    void createProfile_withValidCoordinates_persistsSuccessfully() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Coordinates Farmer");
+        req.setYearsOfExperience(7);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("23.242000"));
+        req.setLongitude(new BigDecimal("69.666900"));
+
+        FarmerProfileResponse response = farmerProfileService.createProfile(testUserId, req);
+
+        assertThat(response.getLatitude()).isEqualByComparingTo("23.242000");
+        assertThat(response.getLongitude()).isEqualByComparingTo("69.666900");
+    }
+
+    @Test
+    @DisplayName("createProfile with boundary coordinates (-90, 90, -180, 180) succeeds")
+    void createProfile_withBoundaryCoordinates_succeeds() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Boundary Farmer");
+        req.setYearsOfExperience(3);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("90.000000"));
+        req.setLongitude(new BigDecimal("-180.000000"));
+
+        FarmerProfileResponse response = farmerProfileService.createProfile(testUserId, req);
+
+        assertThat(response.getLatitude()).isEqualByComparingTo("90.000000");
+        assertThat(response.getLongitude()).isEqualByComparingTo("-180.000000");
+    }
+
+    @Test
+    @DisplayName("createProfile with out-of-range latitude fails validation")
+    void createProfile_outOfRangeLatitude_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Bad Lat Farmer");
+        req.setYearsOfExperience(3);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("90.000001"));
+        req.setLongitude(new BigDecimal("70.000000"));
+
+        assertThatThrownBy(() -> farmerProfileService.createProfile(testUserId, req))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("latitude");
+                    assertThat(ve.getFieldErrors().get("latitude")).contains("between -90 and 90");
+                });
+    }
+
+    @Test
+    @DisplayName("createProfile with out-of-range longitude fails validation")
+    void createProfile_outOfRangeLongitude_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Bad Lon Farmer");
+        req.setYearsOfExperience(3);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("20.000000"));
+        req.setLongitude(new BigDecimal("180.000001"));
+
+        assertThatThrownBy(() -> farmerProfileService.createProfile(testUserId, req))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("longitude");
+                    assertThat(ve.getFieldErrors().get("longitude")).contains("between -180 and 180");
+                });
+    }
+
+    @Test
+    @DisplayName("createProfile with latitude only fails validation requiring both coordinates")
+    void createProfile_latitudeWithoutLongitude_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Solo Lat Farmer");
+        req.setYearsOfExperience(3);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("23.000000"));
+        req.setLongitude(null);
+
+        assertThatThrownBy(() -> farmerProfileService.createProfile(testUserId, req))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("longitude");
+                    assertThat(ve.getFieldErrors().get("longitude")).contains("provided together");
+                });
+    }
+
+    @Test
+    @DisplayName("createProfile with longitude only fails validation requiring both coordinates")
+    void createProfile_longitudeWithoutLatitude_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Solo Lon Farmer");
+        req.setYearsOfExperience(3);
+        req.setPreferredLanguage("en");
+        req.setLatitude(null);
+        req.setLongitude(new BigDecimal("72.000000"));
+
+        assertThatThrownBy(() -> farmerProfileService.createProfile(testUserId, req))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("latitude");
+                    assertThat(ve.getFieldErrors().get("latitude")).contains("provided together");
+                });
+    }
+
+    @Test
+    @DisplayName("updateProfile preserving existing coordinates when coordinates are null in update request")
+    void updateProfile_nullCoordinatesInUpdate_preservesExistingCoordinates() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Original Name");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("22.300000"));
+        req.setLongitude(new BigDecimal("70.800000"));
+        farmerProfileService.createProfile(testUserId, req);
+
+        UpdateFarmerProfileRequest updateReq = new UpdateFarmerProfileRequest();
+        updateReq.setFullName("Updated Name");
+        updateReq.setYearsOfExperience(6);
+        updateReq.setPreferredLanguage("en");
+        updateReq.setLatitude(null);
+        updateReq.setLongitude(null);
+
+        FarmerProfileResponse updated = farmerProfileService.updateProfile(testUserId, updateReq);
+
+        assertThat(updated.getFullName()).isEqualTo("Updated Name");
+        assertThat(updated.getLatitude()).isEqualByComparingTo("22.300000");
+        assertThat(updated.getLongitude()).isEqualByComparingTo("70.800000");
+    }
+
+    @Test
+    @DisplayName("updateProfile with only one coordinate supplied fails validation")
+    void updateProfile_onlyOneCoordinateSupplied_throwsValidationException() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("Original Name");
+        req.setYearsOfExperience(5);
+        req.setPreferredLanguage("en");
+        req.setLatitude(new BigDecimal("22.300000"));
+        req.setLongitude(new BigDecimal("70.800000"));
+        farmerProfileService.createProfile(testUserId, req);
+
+        UpdateFarmerProfileRequest updateReq = new UpdateFarmerProfileRequest();
+        updateReq.setFullName("Updated Name");
+        updateReq.setYearsOfExperience(6);
+        updateReq.setPreferredLanguage("en");
+        updateReq.setLatitude(new BigDecimal("25.000000"));
+        updateReq.setLongitude(null);
+
+        assertThatThrownBy(() -> farmerProfileService.updateProfile(testUserId, updateReq))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> {
+                    ValidationException ve = (ValidationException) ex;
+                    assertThat(ve.getFieldErrors()).containsKey("longitude");
+                    assertThat(ve.getFieldErrors().get("longitude")).contains("provided together");
+                });
+    }
+
+    @Test
+    @DisplayName("profile without coordinates returns null coordinates")
+    void profileWithoutCoordinates_returnsNullCoordinates() {
+        CreateFarmerProfileRequest req = new CreateFarmerProfileRequest();
+        req.setFullName("No Coords Farmer");
+        req.setYearsOfExperience(2);
+        req.setPreferredLanguage("en");
+
+        FarmerProfileResponse response = farmerProfileService.createProfile(testUserId, req);
+
+        assertThat(response.getLatitude()).isNull();
+        assertThat(response.getLongitude()).isNull();
+    }
 }
