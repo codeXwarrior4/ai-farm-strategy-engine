@@ -25,6 +25,10 @@ import com.farmengine.service.financial.CropFinancialFeasibilityService;
 import com.farmengine.service.market.MarketPriceService;
 import com.farmengine.service.suitability.CropSuitabilityService;
 import com.farmengine.service.weather.WeatherService;
+import com.farmengine.dto.economic.CropEconomicEvaluationRequest;
+import com.farmengine.dto.economic.CropEconomicResultDto;
+import com.farmengine.entity.RiskTolerance;
+import com.farmengine.service.economic.CropEconomicEvaluationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -55,6 +59,8 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
     private final CropFinancialFeasibilityService cropFinancialFeasibilityService;
     private final MarketPriceService marketPriceService;
     private final WeatherService weatherService;
+    private final CropEconomicEvaluationService economicEvaluationService;
+    private final AcreageSizingPolicy acreageSizingPolicy;
 
     private static final BigDecimal TIGHT_BUDGET_BUFFER = new BigDecimal("1.15");
     private static final String PROVISIONAL_BUFFER_ASSUMPTION = "PROVISIONAL_PRODUCT_ASSUMPTION";
@@ -79,7 +85,8 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
                 ? request.getWorkingCapitalOverride()
                 : profile.getWorkingCapitalInr();
 
-        FarmerProfile evalProfile = createSpeculativeProfileCopy(profile, evaluatedCultivableHectares, evaluatedWorkingCapitalInr);
+        FarmerProfile evalProfile = createSpeculativeProfileCopy(
+                profile, evaluatedCultivableHectares, evaluatedWorkingCapitalInr, request.getRiskToleranceOverride());
 
         // Resolve candidate crops deterministically
         List<CropMaster> cropsToEvaluate = resolveCandidateCrops(request.getCandidateCropIds());
@@ -114,9 +121,31 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
             // Dimension 4: Operational Weather Risk
             WeatherRiskResultDto cropWeatherDto = weatherRiskDto;
 
-            // Apply locked 5-tier classification waterfall
+            // Dimension 5 (Phase 4D): Economic Evaluation (Scenarios, Cost A2 Margin, BCR)
+            CropEconomicResultDto economicResult = null;
+            if (economicEvaluationService != null) {
+                CropEconomicEvaluationRequest econRequest = CropEconomicEvaluationRequest.builder()
+                        .crop(crop)
+                        .cropId(crop.getId())
+                        .userId(userId)
+                        .farmerProfile(evalProfile)
+                        .state(evalProfile.getPrimaryState())
+                        .district(evalProfile.getPrimaryDistrict())
+                        .season(request.getTargetSeason())
+                        .evaluationDate(request.getEvaluationDate())
+                        .suitabilityLevel(suitabilityResult != null ? suitabilityResult.getOverallSuitability() : null)
+                        .suitabilityResult(suitabilityResult)
+                        .build();
+                try {
+                    economicResult = economicEvaluationService.evaluateEconomicFeasibility(econRequest);
+                } catch (Exception ex) {
+                    log.warn("Economic evaluation failed for crop {}: {}", crop.getCanonicalName(), ex.getMessage());
+                }
+            }
+
+            // Apply locked 5-tier classification waterfall & risk-adjusted sizing
             CropStrategyResultDto cropResult = classifyCrop(
-                    crop, suitabilityResult, financialResult, marketDto, cropWeatherDto);
+                    crop, suitabilityResult, financialResult, marketDto, cropWeatherDto, economicResult, evalProfile);
 
             if (cropResult.getDecisionTier() == StrategyDecisionTier.AGRONOMICALLY_EXCLUDED) {
                 excludedList.add(cropResult);
@@ -443,7 +472,9 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
             CropSuitabilityResult suitabilityResult,
             CropFinancialFeasibilityResult financialResult,
             MarketAttractivenessResultDto marketDto,
-            WeatherRiskResultDto weatherRiskDto) {
+            WeatherRiskResultDto weatherRiskDto,
+            CropEconomicResultDto economicResult,
+            FarmerProfile evalProfile) {
 
         StrategyDecisionTier tier;
         String decisionExplanation;
@@ -511,6 +542,35 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
 
         BigDecimal affordableHectares = (financialResult != null) ? financialResult.getAffordableHectares() : null;
 
+        // Risk-Adjusted Acreage Sizing (Phase 4D)
+        BigDecimal recommendedHectares = null;
+        String acreageSizingExplanation = null;
+        String acreageAllocationModel = "SINGLE_CROP_SCENARIO";
+
+        if (acreageSizingPolicy != null && evalProfile != null) {
+            BigDecimal costPerHa = (financialResult != null) ? financialResult.getCostPerHectareA2() : null;
+            AcreageSizingPolicy.AcreageSizingResult sizing = acreageSizingPolicy.calculateAcreage(
+                    evalProfile.getCultivableHectares(),
+                    evalProfile.getWorkingCapitalInr(),
+                    costPerHa,
+                    evalProfile.getRiskTolerance(),
+                    tier);
+            recommendedHectares = sizing.recommendedHectares();
+            acreageSizingExplanation = sizing.explanation();
+            acreageAllocationModel = sizing.allocationModel();
+        }
+
+        // Add prominent economic warnings if present
+        if (economicResult != null && economicResult.getWarnings() != null) {
+            for (String w : economicResult.getWarnings()) {
+                if (w.startsWith("MODAL_PRICE_BELOW_MSP") || w.startsWith("STALE_MARKET_DATA")) {
+                    if (!primaryWarnings.contains(w)) {
+                        primaryWarnings.add(w);
+                    }
+                }
+            }
+        }
+
         return CropStrategyResultDto.builder()
                 .cropId(crop.getId())
                 .canonicalName(crop.getCanonicalName())
@@ -521,11 +581,14 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
                 .financialFeasibility(financialResult)
                 .marketAttractiveness(marketDto)
                 .weatherRisk(weatherRiskDto)
+                .economicEvaluation(economicResult)
                 .decisionExplanation(decisionExplanation)
                 .primaryWarnings(primaryWarnings)
                 .missingDataPrompts(missingDataPrompts)
-                .recommendedHectares(null) // Preserved as null in this stage
+                .recommendedHectares(recommendedHectares)
                 .affordableHectares(affordableHectares)
+                .acreageSizingExplanation(acreageSizingExplanation)
+                .acreageAllocationModel(acreageAllocationModel)
                 .build();
     }
 
@@ -634,6 +697,14 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
                         c -> (c.getFinancialFeasibility() != null ? c.getFinancialFeasibility().getCapitalSufficiencyRatio() : null),
                         Comparator.nullsLast(Comparator.reverseOrder())
                 )
+                .thenComparing(
+                        c -> (c.getEconomicEvaluation() != null ? c.getEconomicEvaluation().getExpectedBenefitCostRatio() : null),
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                )
+                .thenComparing(
+                        c -> (c.getEconomicEvaluation() != null ? c.getEconomicEvaluation().getExpectedNetOperatingMarginPerHectare() : null),
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                )
                 .thenComparing(CropStrategyResultDto::getCanonicalName, String.CASE_INSENSITIVE_ORDER);
     }
 
@@ -682,7 +753,8 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
     private FarmerProfile createSpeculativeProfileCopy(
             FarmerProfile profile,
             BigDecimal cultivableHectares,
-            BigDecimal workingCapitalInr) {
+            BigDecimal workingCapitalInr,
+            RiskTolerance riskToleranceOverride) {
 
         FarmerProfile copy = new FarmerProfile();
         copy.setId(profile.getId());
@@ -699,7 +771,7 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
         copy.setIrrigationSource(profile.getIrrigationSource());
         copy.setWaterAvailabilityMonths(profile.getWaterAvailabilityMonths());
         copy.setWorkingCapitalInr(workingCapitalInr);
-        copy.setRiskTolerance(profile.getRiskTolerance());
+        copy.setRiskTolerance(riskToleranceOverride != null ? riskToleranceOverride : profile.getRiskTolerance());
         copy.setLatitude(profile.getLatitude());
         copy.setLongitude(profile.getLongitude());
         return copy;

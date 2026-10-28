@@ -47,9 +47,13 @@ public class CropStrategyResultDto {
     @Builder.Default
     private List<String> missingDataPrompts = new ArrayList<>();
 
+    // Phase 4D: Economic Evaluation (Revenue Scenarios, Cost A2 Margin, BCR)
+    private com.farmengine.dto.economic.CropEconomicResultDto economicEvaluation;
+
     // Sizing Guidance
     /**
-     * Preserved as null in this stage. No automatic parcel maximization or invented allocation.
+     * Risk-adjusted recommended land allocation for single-crop scenario (in hectares).
+     * Bounded by cultivable hectares, working capital coverage, and farmer risk tolerance.
      */
     private BigDecimal recommendedHectares;
 
@@ -58,4 +62,15 @@ public class CropStrategyResultDto {
      * Null when Cost A2 benchmark or reported working capital is missing.
      */
     private BigDecimal affordableHectares;
+
+    /**
+     * Transparent explanation of risk-adjusted sizing, buffers, and land caps applied.
+     */
+    private String acreageSizingExplanation;
+
+    /**
+     * Model identifier: SINGLE_CROP_SCENARIO. Clarifies that recommendations cannot be
+     * simultaneously cultivated across the same parcel.
+     */
+    private String acreageAllocationModel;
 }

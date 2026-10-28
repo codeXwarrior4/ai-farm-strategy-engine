@@ -2,6 +2,9 @@
  * API calls and domain types for the Composite Farm Strategy Engine.
  */
 import { apiClient, handleAxiosError } from './apiClient';
+import type { RiskTolerance } from './farmerProfile';
+
+export type { RiskTolerance };
 
 export type GrowingSeason = 'KHARIF' | 'RABI' | 'ZAID';
 
@@ -152,6 +155,82 @@ export interface WeatherRiskResultDto {
   explanation?: string | null;
 }
 
+export type EconomicDataSufficiencyStatus =
+  | 'SUFFICIENT'
+  | 'SUFFICIENT_WITH_WARNINGS'
+  | 'DATA_DEFICIENT';
+
+export type EconomicScenarioName = 'CONSERVATIVE' | 'EXPECTED' | 'OPTIMISTIC';
+
+export interface EconomicScenarioDto {
+  scenarioName: EconomicScenarioName;
+  label: string;
+  priceAssumptionDescription: string;
+  pricePerQuintal?: number | null;
+  priceUnit?: string;
+  adjustedYieldQuintalsPerHa?: number | null;
+  yieldUnit?: string;
+  grossRevenuePerHectare?: number | null;
+  revenueUnit?: string;
+  costPerHectareA2?: number | null;
+  costUnit?: string;
+  netOperatingMarginPerHectare?: number | null;
+  benefitCostRatio?: number | null;
+}
+
+export interface CropEconomicResultDto {
+  status: EconomicDataSufficiencyStatus;
+  cropId: number;
+  canonicalName: string;
+  marketCommodityName?: string | null;
+  state?: string | null;
+  district?: string | null;
+  season?: GrowingSeason | null;
+  evaluationDate?: string | null;
+  benchmarkYieldQuintalsPerHa?: number | null;
+  yieldUnit?: string;
+  yieldBenchmarkYear?: number | null;
+  yieldReferencePeriod?: string | null;
+  yieldSourcePublication?: string | null;
+  yieldSourceOrganization?: string | null;
+  yieldStateScope?: string | null;
+  suitabilityLevel?: SuitabilityLevel | null;
+  suitabilityYieldMultiplier?: number | null;
+  suitabilityMultiplierAssumption?: string | null;
+  adjustedYieldQuintalsPerHa?: number | null;
+  marketModalPrice?: number | null;
+  marketMinPrice?: number | null;
+  marketMaxPrice?: number | null;
+  marketPriceUnit?: string;
+  marketPriceArrivalDate?: string | null;
+  marketPriceDaysOld?: number | null;
+  marketPriceStale?: boolean;
+  marketPriceMarket?: string | null;
+  marketPriceSourceProvider?: string | null;
+  costPerHectareA2?: number | null;
+  costUnit?: string;
+  costBenchmarkYear?: number | null;
+  costReferencePeriod?: string | null;
+  costSourcePublication?: string | null;
+  costSourceOrganization?: string | null;
+  mspInrPerQuintal?: number | null;
+  mspPriceUnit?: string;
+  mspCropYear?: number | null;
+  mspMarketingSeason?: string | null;
+  mspSourcePublication?: string | null;
+  mspComparisonNote?: string | null;
+  conservativeScenario?: EconomicScenarioDto | null;
+  expectedScenario?: EconomicScenarioDto | null;
+  optimisticScenario?: EconomicScenarioDto | null;
+  expectedGrossRevenuePerHectare?: number | null;
+  expectedNetOperatingMarginPerHectare?: number | null;
+  expectedBenefitCostRatio?: number | null;
+  disclaimer?: string;
+  warnings?: string[];
+  missingDataReasons?: string[];
+  summaryExplanation?: string | null;
+}
+
 export interface CropStrategyResultDto {
   cropId: number;
   canonicalName: string;
@@ -163,11 +242,14 @@ export interface CropStrategyResultDto {
   financialFeasibility: CropFinancialFeasibilityResult;
   marketAttractiveness: MarketAttractivenessResultDto;
   weatherRisk: WeatherRiskResultDto;
+  economicEvaluation?: CropEconomicResultDto | null;
   decisionExplanation: string;
   primaryWarnings?: string[];
   missingDataPrompts?: string[];
   recommendedHectares?: number | null;
   affordableHectares?: number | null;
+  acreageSizingExplanation?: string | null;
+  acreageAllocationModel?: string | null;
 }
 
 export interface StrategySummaryDto {
@@ -187,6 +269,7 @@ export interface FarmStrategyEvaluationRequest {
   evaluationDate?: string | null; // ISO string (e.g. YYYY-MM-DDTHH:mm:ss)
   cultivableHectaresOverride?: number | null;
   workingCapitalOverride?: number | null;
+  riskToleranceOverride?: RiskTolerance | null;
   candidateCropIds?: number[] | null;
 }
 

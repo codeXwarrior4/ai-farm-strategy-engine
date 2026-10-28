@@ -62,4 +62,19 @@ public interface CropCostBenchmarkRepository extends JpaRepository<CropCostBench
     List<CropCostBenchmark> findQualifyingBenchmarksAnySeason(
             @Param("cropId") Long cropId,
             @Param("state") String state);
+
+    @Query("SELECT b FROM CropCostBenchmark b WHERE b.crop.id = :cropId " +
+           "AND UPPER(TRIM(b.state)) = UPPER(TRIM(:state)) " +
+           "AND b.season = :season " +
+           "AND b.benchmarkYear = :benchmarkYear " +
+           "AND b.sourceOrganization = :sourceOrganization " +
+           "AND b.isActive = true")
+    java.util.Optional<CropCostBenchmark> findActiveBenchmark(
+            @Param("cropId") Long cropId,
+            @Param("state") String state,
+            @Param("season") String season,
+            @Param("benchmarkYear") Integer benchmarkYear,
+            @Param("sourceOrganization") String sourceOrganization);
+
+    List<CropCostBenchmark> findByIsActiveTrue();
 }

@@ -49,13 +49,13 @@ public class CropSeasonRequirement {
     @Column(name = "duration_days_max")
     private Integer durationDaysMax;
 
-    @Column(name = "sowing_window_start_month")
+    @Column(name = "sowing_window_start_month", columnDefinition = "TINYINT")
     private Integer sowingWindowStartMonth;
 
-    @Column(name = "sowing_window_end_month")
+    @Column(name = "sowing_window_end_month", columnDefinition = "TINYINT")
     private Integer sowingWindowEndMonth;
 
-    @Column(name = "min_water_months_required")
+    @Column(name = "min_water_months_required", columnDefinition = "TINYINT")
     private Integer minWaterMonthsRequired;
 
     @Column(name = "source_organization", nullable = false, length = 150)

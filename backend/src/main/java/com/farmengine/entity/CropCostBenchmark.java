@@ -135,7 +135,7 @@ public class CropCostBenchmark {
      * Active token used for database-level uniqueness enforcement:
      * 1 for active records, NULL for inactive/superseded records.
      */
-    @Column(name = "active_flag")
+    @Column(name = "active_flag", columnDefinition = "TINYINT")
     @Builder.Default
     private Integer activeFlag = 1;
 

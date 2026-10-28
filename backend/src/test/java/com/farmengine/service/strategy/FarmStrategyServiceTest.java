@@ -27,12 +27,14 @@ import com.farmengine.service.financial.CropFinancialFeasibilityService;
 import com.farmengine.service.market.MarketPriceService;
 import com.farmengine.service.suitability.CropSuitabilityService;
 import com.farmengine.service.weather.WeatherService;
+import com.farmengine.service.economic.CropEconomicEvaluationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -65,6 +67,12 @@ class FarmStrategyServiceTest {
 
     @Mock
     private WeatherService weatherService;
+
+    @Mock
+    private CropEconomicEvaluationService economicEvaluationService;
+
+    @Spy
+    private AcreageSizingPolicy acreageSizingPolicy = new RiskAdjustedAcreageSizingPolicy();
 
     @InjectMocks
     private FarmStrategyServiceImpl strategyService;
@@ -208,7 +216,7 @@ class FarmStrategyServiceTest {
         assertThat(result.getMarketAttractiveness().getStatus()).isEqualTo(MarketAttractivenessStatus.FAVORABLE);
         assertThat(result.getWeatherRisk().getStatus()).isEqualTo(WeatherRiskStatus.FAVORABLE);
         assertThat(result.getAffordableHectares()).isEqualByComparingTo("2.7273");
-        assertThat(result.getRecommendedHectares()).isNull(); // strictly null
+        assertThat(result.getRecommendedHectares()).isEqualByComparingTo("2.00");
         assertThat(response.getSummary().getRecommendedCount()).isEqualTo(1);
     }
 
@@ -384,7 +392,7 @@ class FarmStrategyServiceTest {
         CropStrategyResultDto result = response.getCandidateCrops().get(0);
         assertThat(result.getDecisionTier()).isEqualTo(StrategyDecisionTier.FINANCIALLY_CONSTRAINED);
         assertThat(result.getAffordableHectares()).isEqualByComparingTo("1.5000");
-        assertThat(result.getRecommendedHectares()).isNull();
+        assertThat(result.getRecommendedHectares()).isEqualByComparingTo("1.30");
         assertThat(response.getSummary().getFinanciallyConstrainedCount()).isEqualTo(1);
     }
 

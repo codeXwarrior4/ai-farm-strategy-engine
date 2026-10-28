@@ -84,7 +84,7 @@ public class FarmerProfile {
     private IrrigationSource irrigationSource;
 
     /** Months per year with reliable water access (0–12). */
-    @Column(name = "water_availability_months")
+    @Column(name = "water_availability_months", columnDefinition = "TINYINT")
     private Integer waterAvailabilityMonths;
 
     /** Available operational/working capital in Indian Rupees. */

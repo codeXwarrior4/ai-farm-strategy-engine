@@ -56,6 +56,11 @@ public class FarmStrategyEvaluationRequest {
     private BigDecimal workingCapitalOverride;
 
     /**
+     * Optional speculative risk tolerance override to test alternate risk-adjusted sizing scenarios.
+     */
+    private com.farmengine.entity.RiskTolerance riskToleranceOverride;
+
+    /**
      * Optional subset of candidate crop IDs to evaluate.
      * If omitted or empty, all active catalog crops are evaluated.
      * Unknown or inactive IDs result in HTTP 400 Bad Request.

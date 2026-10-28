@@ -5,6 +5,7 @@ import {
   type StrategyDecisionTier,
   type FarmStrategyEvaluationResponse,
   type CropStrategyResultDto,
+  type RiskTolerance,
 } from '../api/strategy';
 import { ApiError } from '../api/apiClient';
 
@@ -13,6 +14,7 @@ interface FarmerStrategySectionProps {
   hasProfile: boolean;
   cultivableHectaresDefault?: number | null;
   workingCapitalInrDefault?: number | null;
+  riskToleranceDefault?: RiskTolerance | null;
   primaryState?: string | null;
   primaryDistrict?: string | null;
 }
@@ -22,6 +24,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
   hasProfile,
   cultivableHectaresDefault,
   workingCapitalInrDefault,
+  riskToleranceDefault,
   primaryState,
   primaryDistrict,
 }) => {
@@ -30,6 +33,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
   const [showOverrides, setShowOverrides] = useState<boolean>(false);
   const [cultivableOverride, setCultivableOverride] = useState<string>('');
   const [capitalOverride, setCapitalOverride] = useState<string>('');
+  const [riskToleranceOverride, setRiskToleranceOverride] = useState<string>('');
   const [evaluationDate, setEvaluationDate] = useState<string>('');
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -61,6 +65,9 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
     const landNum = cultivableOverride.trim() ? parseFloat(cultivableOverride.trim()) : undefined;
     const capNum = capitalOverride.trim() ? parseFloat(capitalOverride.trim()) : undefined;
     const evalDateStr = evaluationDate.trim() ? new Date(evaluationDate.trim()).toISOString() : undefined;
+    const riskOverride = (riskToleranceOverride === 'LOW' || riskToleranceOverride === 'MEDIUM' || riskToleranceOverride === 'HIGH')
+      ? (riskToleranceOverride as RiskTolerance)
+      : undefined;
 
     try {
       const result = await evaluateFarmStrategy(userId, {
@@ -68,6 +75,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
         planningYear: isNaN(yearNum as number) ? undefined : yearNum,
         cultivableHectaresOverride: isNaN(landNum as number) ? undefined : landNum,
         workingCapitalOverride: isNaN(capNum as number) ? undefined : capNum,
+        riskToleranceOverride: riskOverride,
         evaluationDate: evalDateStr,
       });
       setResponse(result);
@@ -151,12 +159,12 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
             <span>🎯</span> Composite Farm Strategy Decision Engine
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Evaluates agronomic suitability, benchmark Cost A2 capital capacity, wholesale market prices, and 7-day operational weather.
+            Evaluates agronomic suitability, benchmark Cost A2 capital capacity, wholesale market prices, operational weather, and risk-adjusted economic revenue scenarios.
           </p>
         </div>
         <div className="flex items-center gap-2 self-start md:self-center">
           <span className="text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-slate-300 font-mono">
-            Phase 3 · Stage 5B
+            Phase 4 · Economic Decision Engine
           </span>
         </div>
       </div>
@@ -243,7 +251,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
 
           {/* Collapsible Speculative Scenarios Panel */}
           {showOverrides && (
-            <div className="mt-3 pt-3 border-t border-white/10 grid sm:grid-cols-3 gap-4 text-xs">
+            <div className="mt-3 pt-3 border-t border-white/10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
               <div>
                 <label htmlFor="cultivableOverride" className="block text-slate-400 mb-1">
                   Speculative Cultivable Hectares (ha)
@@ -284,6 +292,29 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
               </div>
 
               <div>
+                <label htmlFor="riskToleranceOverrideSelect" className="block text-slate-400 mb-1">
+                  Speculative Risk Appetite
+                </label>
+                <select
+                  id="riskToleranceOverrideSelect"
+                  value={riskToleranceOverride}
+                  onChange={(e) => {
+                    setRiskToleranceOverride(e.target.value);
+                    if (response) setIsStale(true);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-[#141b2d] border border-white/10 text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">Profile Default ({riskToleranceDefault || 'MEDIUM'})</option>
+                  <option value="LOW">LOW (70% land cap, 25% capital reserve)</option>
+                  <option value="MEDIUM">MEDIUM (100% land cap, 15% capital reserve)</option>
+                  <option value="HIGH">HIGH (100% land cap, 0% reserve)</option>
+                </select>
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Simulates risk-adjusted buffers without saving to profile.
+                </span>
+              </div>
+
+              <div>
                 <label htmlFor="evaluationDateInput" className="block text-slate-400 mb-1">
                   Explicit Evaluation Date (Freshness Audit)
                 </label>
@@ -298,7 +329,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
                   className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-0.5 block">
-                  Leave empty for deterministic mode without system clock fallback.
+                  Leave empty for deterministic mode without clock fallback.
                 </span>
               </div>
             </div>
@@ -432,7 +463,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
             <h3 className="text-sm font-semibold text-slate-200 flex items-center justify-between">
               <span>🌾 Agronomically Viable Candidate Crops</span>
               <span className="text-xs text-slate-400 font-normal">
-                Ranked deterministically by Tier → Agronomic → Financial → Market → Capital Ratio
+                Ranked deterministically by Tier → Agronomic → Financial → Market Freshness → Capital Ratio → BCR → Net Margin → Alphabetical
               </span>
             </h3>
 
@@ -467,16 +498,19 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
           )}
 
           {/* Regulatory & Methodology Disclaimer */}
-          <div className="bg-slate-900/60 border border-white/5 rounded-xl p-4 text-[11px] text-slate-500 leading-relaxed space-y-1 mt-6">
-            <p className="font-semibold text-slate-400">Decision Engine Methodology & Attribution Disclaimers:</p>
+          <div className="bg-slate-900/60 border border-white/5 rounded-xl p-4 text-[11px] text-slate-500 leading-relaxed space-y-1.5 mt-6">
+            <p className="font-semibold text-slate-400">Decision Engine Methodology &amp; Attribution Disclaimers:</p>
             <p>
               • <strong>Market Prices:</strong> Mandi modal prices represent empirical wholesale market auction rates recorded by AGMARKNET (data.gov.in) under the Government Open Data License (GODL). They do not guarantee net farmgate prices received by an individual farmer.
             </p>
             <p>
-              • <strong>Cost Benchmarks:</strong> Cost A2 benchmarks are sourced from State-level surveys issued by the Commission for Agricultural Costs and Prices (CACP) and Directorate of Economics & Statistics (DES). Micro-climatic pumping or regional variations may apply.
+              • <strong>Cost Benchmarks:</strong> Cost A2 benchmarks are sourced from State-level surveys issued by the Commission for Agricultural Costs and Prices (CACP) and Directorate of Economics &amp; Statistics (DES). Micro-climatic pumping or regional variations may apply.
             </p>
             <p>
-              • <strong>Operational Sizing:</strong> Affordable hectares represent theoretical parcel limits fundable under Cost A2. Recommended hectares remain unavailable pending verified multi-parcel allocation algorithms. Area decisions remain solely with the farmer.
+              • <strong>Yield Benchmarks:</strong> Historical yields are sourced from DES empirical surveys and adjusted by agronomic parcel suitability heuristics. They do not guarantee future harvest volume.
+            </p>
+            <p>
+              • <strong>Operational Sizing:</strong> Recommended hectares represent single-crop planning scenarios calculated using risk-adjusted capital safety reserves and land caps. Area decisions remain solely with the farmer.
             </p>
           </div>
         </div>
@@ -489,6 +523,7 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
     const suit = crop.agronomicSuitability;
     const mkt = crop.marketAttractiveness;
     const wx = crop.weatherRisk;
+    const isEconDataDeficient = !crop.economicEvaluation || crop.economicEvaluation.status === 'DATA_DEFICIENT';
 
     return (
       <div
@@ -615,29 +650,65 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
           </div>
         </div>
 
+        {/* Dimension 5: Economic Evaluation & Margins (Phase 4) */}
+        {renderEconomicSection(crop)}
+
         {/* Operational Sizing Guidance */}
-        <div className="bg-black/20 border border-white/5 rounded-lg p-3 grid sm:grid-cols-2 gap-4 text-xs">
-          <div>
-            <span className="text-slate-400 block text-[11px]">Affordable Parcel Scale (Current Capital)</span>
-            <span className="text-sm font-semibold text-slate-200">
-              {crop.affordableHectares !== null && crop.affordableHectares !== undefined
-                ? `${crop.affordableHectares} hectares`
-                : '— (Requires Cost A2 benchmark and reported capital)'}
+        <div className="bg-black/20 border border-white/5 rounded-lg p-3 space-y-2.5 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/5 pb-2">
+            <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+              <span>📐</span> Operational Parcel Sizing &amp; Risk Buffers
             </span>
-            <span className="text-[10px] text-slate-500 block mt-0.5">
-              Theoretical scale affordable with reported working capital under Cost A2.
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+              {crop.acreageAllocationModel || 'SINGLE_CROP_SCENARIO'}
             </span>
           </div>
 
-          <div>
-            <span className="text-slate-400 block text-[11px]">Recommended Parcel Allocation</span>
-            <span className="text-sm font-semibold text-slate-400">
-              {crop.recommendedHectares !== null && crop.recommendedHectares !== undefined
-                ? `${crop.recommendedHectares} hectares`
-                : 'Unavailable (Preserved as Null)'}
-            </span>
-            <span className="text-[10px] text-slate-500 block mt-0.5">
-              No automatic multi-crop parcel allocation policy active. Area decisions remain with the farmer.
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <span className="text-slate-400 block text-[11px]">
+                {isEconDataDeficient ? 'Maximum Capital-Fundable Area — Returns Unverified' : 'Recommended Parcel Sizing'}
+              </span>
+              <div className="text-sm font-semibold text-slate-100 flex items-center gap-2 mt-0.5">
+                {crop.recommendedHectares !== null && crop.recommendedHectares !== undefined ? (
+                  <>
+                    <span>{crop.recommendedHectares} hectares</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                      isEconDataDeficient
+                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    }`}>
+                      {isEconDataDeficient ? 'CAPITAL CAPACITY' : 'SINGLE-CROP'}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-400">Unavailable (Requires Cost A2 &amp; capital)</span>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-1 leading-snug">
+                {isEconDataDeficient
+                  ? 'Reflects estimated capital capacity based on reported working capital and Cost A2 only. This is an affordability boundary, NOT an economically validated crop recommendation or guarantee of profitability.'
+                  : (crop.acreageSizingExplanation || 'Risk-adjusted sizing based on cultivable land caps and capital reserve safety buffers.')}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-400 block text-[11px]">Affordable Parcel Scale (Unbuffered Cost A2)</span>
+              <div className="text-sm font-semibold text-slate-300 mt-0.5">
+                {crop.affordableHectares !== null && crop.affordableHectares !== undefined
+                  ? `${crop.affordableHectares} hectares`
+                  : '— (Requires Cost A2 benchmark and reported capital)'}
+              </div>
+              <span className="text-[10px] text-slate-500 block mt-1 leading-snug">
+                Theoretical physical scale fundable with reported working capital under Cost A2 before applying risk tolerance safety buffers.
+              </span>
+            </div>
+          </div>
+
+          <div className="text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded px-2.5 py-1.5 flex items-start gap-1.5">
+            <span>⚠️</span>
+            <span>
+              <strong>Mutually Exclusive Parcel Commitment:</strong> Recommended hectares represents a single-crop parcel commitment. Do NOT sum recommended hectares across different crop cards; each represents an independent, alternative cropping choice for your parcel.
             </span>
           </div>
         </div>
@@ -661,6 +732,269 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  function renderEconomicSection(crop: CropStrategyResultDto) {
+    const econ = crop.economicEvaluation;
+
+    if (!econ || econ.status === 'DATA_DEFICIENT') {
+      return (
+        <div className="bg-sky-950/20 border border-sky-500/20 rounded-xl p-3.5 space-y-2 text-xs">
+          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+            <span className="font-semibold text-sky-300 flex items-center gap-1.5">
+              <span>📊</span> Dimension 5: Economic Evaluation &amp; Margins
+            </span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+              DATA DEFICIENT
+            </span>
+          </div>
+
+          <div className="text-[11px] text-slate-300">
+            {econ?.summaryExplanation ||
+              'Official economic evaluation could not be computed due to missing empirical cost, yield, or mandi data.'}
+          </div>
+
+          {econ?.missingDataReasons && econ.missingDataReasons.length > 0 && (
+            <div className="space-y-1 bg-black/20 p-2 rounded border border-white/5">
+              <span className="text-[10px] text-slate-400 font-medium block">Missing Benchmark Requirements:</span>
+              {econ.missingDataReasons.map((reason, idx) => (
+                <div key={idx} className="text-[11px] text-sky-300 flex items-center gap-1.5">
+                  <span>•</span>
+                  <span>{reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="text-[10px] text-slate-500 italic">
+            Revenue scenarios, net operating margins, and Benefit-Cost Ratios (BCR) are withheld to prevent fabricated financial returns.
+          </div>
+        </div>
+      );
+    }
+
+    const hasWarnings = econ.status === 'SUFFICIENT_WITH_WARNINGS';
+    const netMargin = econ.expectedNetOperatingMarginPerHectare ?? 0;
+    const isMarginPositive = netMargin >= 0;
+
+    return (
+      <div className="bg-white/[0.03] border border-indigo-500/20 rounded-xl p-4 space-y-3.5 text-xs">
+        {/* Economic Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-200 text-sm flex items-center gap-1.5">
+              <span>📊</span> Dimension 5: Official Economic Feasibility &amp; Scenarios
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono">Phase 4</span>
+          </div>
+          <div>
+            {hasWarnings ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <span>⚠️</span> SUFFICIENT WITH CAVEATS
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span>✓</span> OFFICIAL BENCHMARKS SUFFICIENT
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Top 4 KPI Metrics (Expected Scenario) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="bg-black/30 border border-white/5 rounded-lg p-2.5">
+            <span className="text-slate-400 text-[10px] block">Expected Gross Revenue</span>
+            <span className="text-sm font-bold text-slate-100">
+              {econ.expectedGrossRevenuePerHectare !== null && econ.expectedGrossRevenuePerHectare !== undefined
+                ? `₹ ${Math.round(econ.expectedGrossRevenuePerHectare).toLocaleString('en-IN')}`
+                : '—'}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              per hectare ({econ.adjustedYieldQuintalsPerHa ?? '—'} q/ha)
+            </span>
+          </div>
+
+          <div className="bg-black/30 border border-white/5 rounded-lg p-2.5">
+            <span className="text-slate-400 text-[10px] block">Net Operating Margin (Cost A2)</span>
+            <span className={`text-sm font-bold ${isMarginPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {econ.expectedNetOperatingMarginPerHectare !== null && econ.expectedNetOperatingMarginPerHectare !== undefined
+                ? `${isMarginPositive ? '+' : ''}₹ ${Math.round(econ.expectedNetOperatingMarginPerHectare).toLocaleString('en-IN')}`
+                : '—'}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              per ha over Cost A2 expenses
+            </span>
+          </div>
+
+          <div className="bg-black/30 border border-white/5 rounded-lg p-2.5">
+            <span className="text-slate-400 text-[10px] block">Benefit-Cost Ratio (BCR)</span>
+            <span className="text-sm font-bold text-indigo-300">
+              {econ.expectedBenefitCostRatio !== null && econ.expectedBenefitCostRatio !== undefined
+                ? `${Number(econ.expectedBenefitCostRatio).toFixed(2)}x`
+                : '—'}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5">
+              {econ.expectedBenefitCostRatio && econ.expectedBenefitCostRatio >= 1.5
+                ? 'Favorable return (>1.5x)'
+                : econ.expectedBenefitCostRatio && econ.expectedBenefitCostRatio >= 1.0
+                ? 'Positive return (>1.0x)'
+                : 'Below Cost A2 break-even'}
+            </span>
+          </div>
+
+          <div className="bg-black/30 border border-white/5 rounded-lg p-2.5">
+            <span className="text-slate-400 text-[10px] block">Adjusted Yield</span>
+            <span className="text-sm font-bold text-slate-200">
+              {econ.adjustedYieldQuintalsPerHa !== null && econ.adjustedYieldQuintalsPerHa !== undefined
+                ? `${econ.adjustedYieldQuintalsPerHa} q/ha`
+                : '—'}
+            </span>
+            <span className="text-[10px] text-slate-500 block mt-0.5 truncate" title={econ.suitabilityMultiplierAssumption || ''}>
+              {econ.suitabilityYieldMultiplier ? `${Math.round(econ.suitabilityYieldMultiplier * 100)}% of DES base` : 'Official DES base'}
+            </span>
+          </div>
+        </div>
+
+        {/* 3 Scenario Projections (Conservative, Expected, Optimistic) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium">
+            <span>Price &amp; Margin Scenario Analysis</span>
+            <span className="text-[10px] text-slate-500">Mandi Min → Modal → Max</span>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-2 text-[11px]">
+            {/* Conservative */}
+            <div className="bg-white/5 border border-white/5 rounded-lg p-2.5 space-y-1">
+              <div className="flex items-center justify-between font-semibold text-slate-300">
+                <span>Conservative</span>
+                <span className="text-slate-400 text-[10px]">Min Mandi Price</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Price: <span className="text-slate-200">₹ {econ.conservativeScenario?.pricePerQuintal?.toLocaleString('en-IN') ?? '—'}/qtl</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Gross Revenue: <span className="text-slate-200">₹ {Math.round(econ.conservativeScenario?.grossRevenuePerHectare || 0).toLocaleString('en-IN')}/ha</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Net Margin: <span className={((econ.conservativeScenario?.netOperatingMarginPerHectare || 0) >= 0) ? 'text-emerald-400' : 'text-rose-400'}>
+                  ₹ {Math.round(econ.conservativeScenario?.netOperatingMarginPerHectare || 0).toLocaleString('en-IN')}/ha
+                </span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                BCR: <span className="text-indigo-300 font-bold">{Number(econ.conservativeScenario?.benefitCostRatio || 0).toFixed(2)}x</span>
+              </div>
+            </div>
+
+            {/* Expected */}
+            <div className="bg-indigo-950/20 border border-indigo-500/30 rounded-lg p-2.5 space-y-1">
+              <div className="flex items-center justify-between font-semibold text-indigo-300">
+                <span>Expected</span>
+                <span className="text-indigo-400 text-[10px]">Modal Mandi Price</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Price: <span className="text-slate-200">₹ {econ.expectedScenario?.pricePerQuintal?.toLocaleString('en-IN') ?? '—'}/qtl</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Gross Revenue: <span className="text-slate-200">₹ {Math.round(econ.expectedScenario?.grossRevenuePerHectare || 0).toLocaleString('en-IN')}/ha</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Net Margin: <span className={((econ.expectedScenario?.netOperatingMarginPerHectare || 0) >= 0) ? 'text-emerald-400' : 'text-rose-400'}>
+                  ₹ {Math.round(econ.expectedScenario?.netOperatingMarginPerHectare || 0).toLocaleString('en-IN')}/ha
+                </span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                BCR: <span className="text-indigo-300 font-bold">{Number(econ.expectedScenario?.benefitCostRatio || 0).toFixed(2)}x</span>
+              </div>
+            </div>
+
+            {/* Optimistic */}
+            <div className="bg-white/5 border border-white/5 rounded-lg p-2.5 space-y-1">
+              <div className="flex items-center justify-between font-semibold text-slate-300">
+                <span>Optimistic</span>
+                <span className="text-slate-400 text-[10px]">Max Mandi Price</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Price: <span className="text-slate-200">₹ {econ.optimisticScenario?.pricePerQuintal?.toLocaleString('en-IN') ?? '—'}/qtl</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Gross Revenue: <span className="text-slate-200">₹ {Math.round(econ.optimisticScenario?.grossRevenuePerHectare || 0).toLocaleString('en-IN')}/ha</span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                Net Margin: <span className={((econ.optimisticScenario?.netOperatingMarginPerHectare || 0) >= 0) ? 'text-emerald-400' : 'text-rose-400'}>
+                  ₹ {Math.round(econ.optimisticScenario?.netOperatingMarginPerHectare || 0).toLocaleString('en-IN')}/ha
+                </span>
+              </div>
+              <div className="text-slate-400 text-[10px]">
+                BCR: <span className="text-indigo-300 font-bold">{Number(econ.optimisticScenario?.benefitCostRatio || 0).toFixed(2)}x</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Provenance Metadata Grid */}
+        <div className="bg-black/20 border border-white/5 rounded-lg p-2.5 grid sm:grid-cols-3 gap-2 text-[10px] text-slate-400">
+          <div>
+            <span className="text-slate-300 font-medium block mb-0.5">🌾 Yield Benchmark:</span>
+            <div>Source: {econ.yieldSourcePublication || 'DES, MoA&FW'}</div>
+            <div>Period: {econ.yieldReferencePeriod || 'Official'} ({econ.yieldBenchmarkYear ?? '—'})</div>
+            <div>Scope: {econ.yieldStateScope || 'State'}</div>
+          </div>
+
+          <div>
+            <span className="text-slate-300 font-medium block mb-0.5">🪙 Cost A2 Benchmark:</span>
+            <div>Cost A2: {econ.costPerHectareA2 ? `₹ ${econ.costPerHectareA2.toLocaleString('en-IN')}/ha` : 'Pending'}</div>
+            <div>Source: {econ.costSourcePublication || 'CACP Comprehensive Scheme'}</div>
+            <div>Period: {econ.costReferencePeriod || 'Official'} ({econ.costBenchmarkYear ?? '—'})</div>
+          </div>
+
+          <div>
+            <span className="text-slate-300 font-medium block mb-0.5">🏬 Mandi Market Observation:</span>
+            <div>Mandi: {econ.marketPriceMarket || 'District Mandi'}</div>
+            <div>
+              Arrival: {econ.marketPriceArrivalDate || 'Recent'} ({econ.marketPriceDaysOld ?? '—'}d old)
+            </div>
+            {econ.marketPriceStale && (
+              <span className="text-amber-400 font-semibold block">⚠️ Stale Price (&gt;7 days)</span>
+            )}
+          </div>
+        </div>
+
+        {/* Statutory MSP Reference (if available) */}
+        {econ.mspInrPerQuintal !== null && econ.mspInrPerQuintal !== undefined && (
+          <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-lg p-2.5 text-[11px] text-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="font-semibold text-emerald-200">🏛️ Statutory Minimum Support Price (MSP): </span>
+              <span>₹ {econ.mspInrPerQuintal.toLocaleString('en-IN')} / qtl</span>
+              <span className="text-emerald-400/80 text-[10px] ml-1.5">
+                ({econ.mspMarketingSeason || 'Statutory floor'} · {econ.mspSourcePublication || 'CACP / Gazette'})
+              </span>
+              {econ.mspComparisonNote && (
+                <div className="text-[10px] text-emerald-400 mt-0.5">{econ.mspComparisonNote}</div>
+              )}
+            </div>
+            <span className="text-[9px] text-slate-400 max-w-xs text-right hidden sm:block">
+              Informational procurement reference; not a guaranteed private buyer rate.
+            </span>
+          </div>
+        )}
+
+        {/* Specific Warnings */}
+        {econ.warnings && econ.warnings.length > 0 && (
+          <div className="space-y-1">
+            {econ.warnings.map((w, i) => (
+              <div key={i} className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1 flex items-center gap-1.5">
+                <span>⚠️</span>
+                <span>{w}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Descriptive Scenario Disclaimer */}
+        <div className="text-[10px] text-slate-500 italic leading-relaxed pt-1 border-t border-white/5">
+          ⚖️ <strong>Descriptive Scenario Estimates Only:</strong> Projections are heuristic modeling based on historical government cost/yield surveys and recent mandi arrival prices. They do not constitute guaranteed future income, financial advice, or comprehensive accounting profit. Net Operating Margin over Cost A2 reflects paid-out operational expenses and excludes family labor, rental value of owned land, and capital depreciation (Cost C2).
+        </div>
       </div>
     );
   }
@@ -700,8 +1034,11 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
           </div>
         )}
 
-        <div className="text-[10px] text-slate-500 pt-1 border-t border-white/5">
-          Sizing: Affordable/Recommended hectares not applicable.
+        <div className="text-[10px] text-slate-500 pt-1 border-t border-white/5 space-y-0.5">
+          <div>
+            Sizing: <strong className="text-rose-400">0.00 hectares</strong> (Agronomically Incompatible with current season/soil).
+          </div>
+          <div>Economic evaluation is not applicable to excluded crops.</div>
         </div>
       </div>
     );

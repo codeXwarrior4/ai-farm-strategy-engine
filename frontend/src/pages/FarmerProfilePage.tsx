@@ -927,6 +927,9 @@ export default function FarmerProfilePage() {
           }
           primaryState={profileData?.primaryState || (form.primaryState.trim() ? form.primaryState.trim() : null)}
           primaryDistrict={profileData?.primaryDistrict || (form.primaryDistrict.trim() ? form.primaryDistrict.trim() : null)}
+          riskToleranceDefault={
+            profileData?.riskTolerance || (form.riskTolerance ? (form.riskTolerance as RiskTolerance) : null)
+          }
         />
 
         {/* Existing Profile Overview Card */}
