@@ -29,4 +29,18 @@ public interface CropYieldBenchmarkProvider {
      * @return qualifying yield benchmark DTO, or empty if none found
      */
     Optional<CropYieldBenchmarkDto> findBenchmark(Long cropId, String rawState, GrowingSeason season);
+
+    /**
+     * Resolves an informational yield benchmark (including converted benchmarks like Cotton Kapas)
+     * for transparent display with provenance and methodology caveats.
+     * Informational benchmarks are not eligible for official economic recommendations or margin guarantees.
+     *
+     * @param cropId   crop database identifier
+     * @param rawState farmer's state (will be normalized)
+     * @param season   growing season
+     * @return informational yield benchmark DTO, or empty if none found
+     */
+    default Optional<CropYieldBenchmarkDto> findInformationalBenchmark(Long cropId, String rawState, GrowingSeason season) {
+        return findBenchmark(cropId, rawState, season);
+    }
 }

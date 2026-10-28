@@ -255,6 +255,9 @@ class BenchmarkIngestionServiceTest {
         BenchmarkCoverageReportDto report = benchmarkIngestionService.generateCoverageReport();
         assertThat(report.getTotalCatalogCrops()).isEqualTo(8);
         assertThat(report.getCropsWithFullCoverageCount()).isEqualTo(8);
+        assertThat(report.getTotalDecisionEligibleYieldBenchmarks()).isEqualTo(36);
+        assertThat(report.getTotalInformationalOnlyYieldBenchmarks()).isEqualTo(4);
+        assertThat(report.getCropsWithDecisionEligibilityCount()).isEqualTo(7);
         assertThat(report.getMissingCombinations()).isEmpty();
         assertThat(report.isProvenanceComplete()).isTrue();
 
@@ -266,6 +269,17 @@ class BenchmarkIngestionServiceTest {
             assertThat(item.isHasActiveCost()).isTrue();
             assertThat(item.isHasActiveMsp()).isTrue();
             assertThat(item.getMissingBenchmarks()).isEmpty();
+
+            if ("Cotton".equalsIgnoreCase(item.getCanonicalName())) {
+                assertThat(item.isHasDecisionEligibleYield()).isFalse();
+                assertThat(item.isHasInformationalOnlyYield()).isTrue();
+                assertThat(item.isEconomicRecommendationEligible()).isFalse();
+                assertThat(item.getEligibilityNotes()).isNotEmpty();
+            } else {
+                assertThat(item.isHasDecisionEligibleYield()).isTrue();
+                assertThat(item.isHasInformationalOnlyYield()).isFalse();
+                assertThat(item.isEconomicRecommendationEligible()).isTrue();
+            }
         }
     }
 

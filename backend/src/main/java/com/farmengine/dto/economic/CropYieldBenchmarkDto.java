@@ -43,4 +43,12 @@ public class CropYieldBenchmarkDto {
     private String sourceTableRef;
     private Integer revisionVersion;
     private String notes;
+
+    @Builder.Default
+    private com.farmengine.entity.BenchmarkUsageScope usageScope = com.farmengine.entity.BenchmarkUsageScope.ECONOMIC_RECOMMENDATION;
+
+    @Builder.Default
+    private boolean decisionEligible = true;
+
+    private String eligibilityReason;
 }

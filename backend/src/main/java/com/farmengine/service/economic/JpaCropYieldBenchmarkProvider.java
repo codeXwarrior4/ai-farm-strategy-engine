@@ -33,12 +33,15 @@ public class JpaCropYieldBenchmarkProvider implements CropYieldBenchmarkProvider
 
     private final CropYieldBenchmarkRepository benchmarkRepository;
     private final StateNormalizer stateNormalizer;
+    private final BenchmarkEligibilityPolicy eligibilityPolicy;
 
     @Autowired
     public JpaCropYieldBenchmarkProvider(CropYieldBenchmarkRepository benchmarkRepository,
-                                         StateNormalizer stateNormalizer) {
+                                         StateNormalizer stateNormalizer,
+                                         BenchmarkEligibilityPolicy eligibilityPolicy) {
         this.benchmarkRepository = benchmarkRepository;
         this.stateNormalizer = stateNormalizer;
+        this.eligibilityPolicy = eligibilityPolicy;
     }
 
     @Override
@@ -107,7 +110,88 @@ public class JpaCropYieldBenchmarkProvider implements CropYieldBenchmarkProvider
         return Optional.empty();
     }
 
+    @Override
+    public Optional<CropYieldBenchmarkDto> findInformationalBenchmark(Long cropId, String rawState, GrowingSeason season) {
+        if (cropId == null || rawState == null) {
+            return Optional.empty();
+        }
+
+        Optional<String> canonicalStateOpt = stateNormalizer.normalize(rawState);
+        String stateToSearch = canonicalStateOpt.orElse(rawState.trim().toUpperCase());
+
+        if (season != null) {
+            // 1. Exact state and season match
+            List<CropYieldBenchmark> exactMatches = benchmarkRepository.findActiveBenchmarks(
+                    cropId, stateToSearch, season.name());
+            for (CropYieldBenchmark b : exactMatches) {
+                var eligibility = eligibilityPolicy.evaluateYieldEligibility(b);
+                if (eligibility.isEligibleForInformationalDisplay()) {
+                    return Optional.of(mapToDto(b));
+                }
+            }
+
+            // 2. State-level all-seasons fallback
+            List<CropYieldBenchmark> stateAllSeasons = benchmarkRepository.findActiveBenchmarks(
+                    cropId, stateToSearch, "ALL_SEASONS");
+            for (CropYieldBenchmark b : stateAllSeasons) {
+                var eligibility = eligibilityPolicy.evaluateYieldEligibility(b);
+                if (eligibility.isEligibleForInformationalDisplay()) {
+                    return Optional.of(mapToDto(b));
+                }
+            }
+
+            // 3. National baseline with exact season
+            if (!"ALL_INDIA".equalsIgnoreCase(stateToSearch)) {
+                List<CropYieldBenchmark> nationalSeason = benchmarkRepository.findActiveBenchmarks(
+                        cropId, "ALL_INDIA", season.name());
+                for (CropYieldBenchmark b : nationalSeason) {
+                    var eligibility = eligibilityPolicy.evaluateYieldEligibility(b);
+                    if (eligibility.isEligibleForInformationalDisplay()) {
+                        return Optional.of(mapToDto(b));
+                    }
+                }
+
+                // 4. National baseline all-seasons
+                List<CropYieldBenchmark> nationalAllSeasons = benchmarkRepository.findActiveBenchmarks(
+                        cropId, "ALL_INDIA", "ALL_SEASONS");
+                for (CropYieldBenchmark b : nationalAllSeasons) {
+                    var eligibility = eligibilityPolicy.evaluateYieldEligibility(b);
+                    if (eligibility.isEligibleForInformationalDisplay()) {
+                        return Optional.of(mapToDto(b));
+                    }
+                }
+            }
+
+            return Optional.empty();
+        }
+
+        // Season-agnostic query
+        List<CropYieldBenchmark> stateMatches = benchmarkRepository.findActiveBenchmarks(
+                cropId, stateToSearch, "ALL_SEASONS");
+        for (CropYieldBenchmark b : stateMatches) {
+            var eligibility = eligibilityPolicy.evaluateYieldEligibility(b);
+            if (eligibility.isEligibleForInformationalDisplay()) {
+                return Optional.of(mapToDto(b));
+            }
+        }
+
+        if (!"ALL_INDIA".equalsIgnoreCase(stateToSearch)) {
+            List<CropYieldBenchmark> nationalMatches = benchmarkRepository.findActiveBenchmarks(
+                    cropId, "ALL_INDIA", "ALL_SEASONS");
+            for (CropYieldBenchmark b : nationalMatches) {
+                var eligibility = eligibilityPolicy.evaluateYieldEligibility(b);
+                if (eligibility.isEligibleForInformationalDisplay()) {
+                    return Optional.of(mapToDto(b));
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
     private CropYieldBenchmarkDto mapToDto(CropYieldBenchmark entity) {
+        var eligibility = eligibilityPolicy.evaluateYieldEligibility(entity);
+
         return CropYieldBenchmarkDto.builder()
                 .cropId(entity.getCrop().getId())
                 .canonicalName(entity.getCrop().getCanonicalName())
@@ -126,6 +210,9 @@ public class JpaCropYieldBenchmarkProvider implements CropYieldBenchmarkProvider
                 .sourceTableRef(entity.getSourceTableRef())
                 .revisionVersion(entity.getRevisionVersion())
                 .notes(entity.getNotes())
+                .usageScope(eligibility.getUsageScope())
+                .decisionEligible(eligibility.isEligibleForRecommendation())
+                .eligibilityReason(eligibility.getPrimaryReason())
                 .build();
     }
 }

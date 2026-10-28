@@ -37,6 +37,7 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
     private final CropYieldBenchmarkRepository yieldBenchmarkRepository;
     private final CropCostBenchmarkRepository costBenchmarkRepository;
     private final CropMspFloorRepository mspFloorRepository;
+    private final com.farmengine.service.economic.BenchmarkEligibilityPolicy eligibilityPolicy;
 
     @Override
     @Transactional
@@ -517,7 +518,19 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
         List<BenchmarkCoverageReportDto.CropCoverageItemDto> cropItems = new ArrayList<>();
         List<String> missingCombinations = new ArrayList<>();
         int fullCoverageCount = 0;
+        int decisionEligibleCropsCount = 0;
+        int totalDecisionEligibleYields = 0;
+        int totalInformationalOnlyYields = 0;
         boolean provenanceComplete = true;
+
+        for (CropYieldBenchmark y : activeYields) {
+            var el = eligibilityPolicy.evaluateYieldEligibility(y);
+            if (el.isEligibleForRecommendation()) {
+                totalDecisionEligibleYields++;
+            } else if (el.isEligibleForInformationalDisplay()) {
+                totalInformationalOnlyYields++;
+            }
+        }
 
         for (CropMaster crop : allCrops) {
             List<CropYieldBenchmark> cropYields = yieldsByCrop.getOrDefault(crop.getId(), Collections.emptyList());
@@ -528,6 +541,14 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
             boolean hasCost = !cropCosts.isEmpty();
             boolean hasMsp = !cropMsps.isEmpty();
 
+            boolean hasDecisionEligibleYield = cropYields.stream()
+                    .anyMatch(y -> eligibilityPolicy.evaluateYieldEligibility(y).isEligibleForRecommendation());
+            boolean hasInformationalOnlyYield = cropYields.stream()
+                    .anyMatch(y -> {
+                        var el = eligibilityPolicy.evaluateYieldEligibility(y);
+                        return el.isEligibleForInformationalDisplay() && !el.isEligibleForRecommendation();
+                    });
+
             Set<String> yieldStates = cropYields.stream().map(CropYieldBenchmark::getState).collect(Collectors.toSet());
             Set<String> costStates = cropCosts.stream().map(CropCostBenchmark::getState).collect(Collectors.toSet());
 
@@ -536,10 +557,15 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
             Integer latestMspYear = cropMsps.stream().map(CropMspFloor::getCropYear).max(Integer::compareTo).orElse(null);
 
             List<String> missing = new ArrayList<>();
+            List<String> eligibilityNotes = new ArrayList<>();
+
             if (!hasYield) {
                 missing.add("YIELD");
                 missingCombinations.add("Crop '" + crop.getCanonicalName() + "' has zero active yield benchmarks");
+            } else if (!hasDecisionEligibleYield && hasInformationalOnlyYield) {
+                eligibilityNotes.add("Converted yield benchmark retained for informational display only; ineligible for economic recommendation.");
             }
+
             if (!hasCost) {
                 missing.add("COST_A2");
                 missingCombinations.add("Crop '" + crop.getCanonicalName() + "' has zero active Cost A2 benchmarks");
@@ -552,6 +578,11 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
             boolean isFull = hasYield && hasCost && hasMsp;
             if (isFull) {
                 fullCoverageCount++;
+            }
+
+            boolean isDecisionEligible = hasDecisionEligibleYield && hasCost && hasMsp;
+            if (isDecisionEligible) {
+                decisionEligibleCropsCount++;
             }
 
             // Verify provenance completeness
@@ -575,6 +606,8 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
                     .cropId(crop.getId())
                     .canonicalName(crop.getCanonicalName())
                     .hasActiveYield(hasYield)
+                    .hasDecisionEligibleYield(hasDecisionEligibleYield)
+                    .hasInformationalOnlyYield(hasInformationalOnlyYield)
                     .yieldRecordCount(cropYields.size())
                     .latestYieldYear(latestYieldYear)
                     .yieldStates(yieldStates)
@@ -586,16 +619,21 @@ public class BenchmarkIngestionServiceImpl implements BenchmarkIngestionService 
                     .mspRecordCount(cropMsps.size())
                     .latestMspYear(latestMspYear)
                     .fullyCovered(isFull)
+                    .economicRecommendationEligible(isDecisionEligible)
                     .missingBenchmarks(missing)
+                    .eligibilityNotes(eligibilityNotes)
                     .build());
         }
 
         return BenchmarkCoverageReportDto.builder()
                 .totalActiveYieldBenchmarks(activeYields.size())
+                .totalDecisionEligibleYieldBenchmarks(totalDecisionEligibleYields)
+                .totalInformationalOnlyYieldBenchmarks(totalInformationalOnlyYields)
                 .totalActiveCostBenchmarks(activeCosts.size())
                 .totalActiveMspFloors(activeMsps.size())
                 .totalCatalogCrops(allCrops.size())
                 .cropsWithFullCoverageCount(fullCoverageCount)
+                .cropsWithDecisionEligibilityCount(decisionEligibleCropsCount)
                 .cropCoverage(cropItems)
                 .missingCombinations(missingCombinations)
                 .provenanceComplete(provenanceComplete)

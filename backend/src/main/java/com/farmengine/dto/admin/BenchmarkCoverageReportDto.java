@@ -19,10 +19,13 @@ import java.util.Set;
 public class BenchmarkCoverageReportDto {
 
     private int totalActiveYieldBenchmarks;
+    private int totalDecisionEligibleYieldBenchmarks;
+    private int totalInformationalOnlyYieldBenchmarks;
     private int totalActiveCostBenchmarks;
     private int totalActiveMspFloors;
     private int totalCatalogCrops;
     private int cropsWithFullCoverageCount;
+    private int cropsWithDecisionEligibilityCount;
 
     @Builder.Default
     private List<CropCoverageItemDto> cropCoverage = new ArrayList<>();
@@ -44,6 +47,8 @@ public class BenchmarkCoverageReportDto {
         private Long cropId;
         private String canonicalName;
         private boolean hasActiveYield;
+        private boolean hasDecisionEligibleYield;
+        private boolean hasInformationalOnlyYield;
         private int yieldRecordCount;
         private Integer latestYieldYear;
         private Set<String> yieldStates;
@@ -58,6 +63,10 @@ public class BenchmarkCoverageReportDto {
         private Integer latestMspYear;
 
         private boolean fullyCovered;
+        private boolean economicRecommendationEligible;
         private List<String> missingBenchmarks;
+
+        @Builder.Default
+        private List<String> eligibilityNotes = new ArrayList<>();
     }
 }

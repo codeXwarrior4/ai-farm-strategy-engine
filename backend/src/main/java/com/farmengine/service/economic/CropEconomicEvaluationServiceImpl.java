@@ -148,9 +148,29 @@ public class CropEconomicEvaluationServiceImpl implements CropEconomicEvaluation
                 missingDataReasons.add("INVALID_YIELD_BENCHMARK: Yield benchmark value is non-positive or missing.");
             }
         } else {
-            missingDataReasons.add("MISSING_YIELD_BENCHMARK: No verified empirical yield benchmark found for "
-                    + crop.getCanonicalName() + " in state " + (state != null ? state : "UNREPORTED")
-                    + (season != null ? " (" + season.name() + ")" : "") + ".");
+            Optional<CropYieldBenchmarkDto> infoYieldOpt = (state != null)
+                    ? yieldBenchmarkProvider.findInformationalBenchmark(crop.getId(), state, season)
+                    : Optional.empty();
+
+            if (infoYieldOpt.isPresent()) {
+                CropYieldBenchmarkDto infoDto = infoYieldOpt.get();
+                benchmarkYield = infoDto.getYieldQuintalsPerHectare();
+                yieldBenchmarkYear = infoDto.getBenchmarkYear();
+                yieldReferencePeriod = infoDto.getReferencePeriod();
+                yieldSourcePublication = infoDto.getSourcePublication();
+                yieldSourceOrganization = infoDto.getSourceOrganization();
+                yieldStateScope = (infoDto.getState() != null && infoDto.getState().equalsIgnoreCase("ALL_INDIA"))
+                        ? "ALL_INDIA"
+                        : "STATE";
+
+                missingDataReasons.add("INELIGIBLE_CONVERTED_YIELD: Yield benchmark for " + crop.getCanonicalName()
+                        + " is a converted estimate (" + (infoDto.getNotes() != null ? infoDto.getNotes() : "converted benchmark")
+                        + ") and is ineligible for economic return recommendations. Retained for informational display only.");
+            } else {
+                missingDataReasons.add("MISSING_YIELD_BENCHMARK: No verified empirical yield benchmark found for "
+                        + crop.getCanonicalName() + " in state " + (state != null ? state : "UNREPORTED")
+                        + (season != null ? " (" + season.name() + ")" : "") + ".");
+            }
         }
 
         // 6. Resolve Cultivation Cost Benchmark (Cost A2)

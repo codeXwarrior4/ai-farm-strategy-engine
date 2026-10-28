@@ -71,5 +71,22 @@ public interface CropYieldBenchmarkRepository extends JpaRepository<CropYieldBen
             @Param("benchmarkYear") Integer benchmarkYear,
             @Param("sourceOrganization") String sourceOrganization);
 
+    /**
+     * Resolves all active yield benchmarks matching crop, state, and season regardless of evidence tier
+     * (used for informational display resolution and eligibility evaluation).
+     */
+    @Query("SELECT y FROM CropYieldBenchmark y WHERE y.crop.id = :cropId " +
+           "AND UPPER(TRIM(y.state)) = UPPER(TRIM(:state)) " +
+           "AND y.season = :season " +
+           "AND y.isActive = true " +
+           "AND y.supersededBy IS NULL " +
+           "AND y.yieldUnit = 'QUINTAL_PER_HA' " +
+           "AND y.yieldQuintalsPerHectare > 0 " +
+           "ORDER BY y.benchmarkYear DESC, y.revisionVersion DESC, y.id DESC")
+    List<CropYieldBenchmark> findActiveBenchmarks(
+            @Param("cropId") Long cropId,
+            @Param("state") String state,
+            @Param("season") String season);
+
     List<CropYieldBenchmark> findByIsActiveTrue();
 }

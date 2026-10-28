@@ -563,4 +563,53 @@ class CropEconomicEvaluationServiceTest {
         assertThat(result.getExpectedBenefitCostRatio()).isNull();
         assertThat(result.getMissingDataReasons()).anyMatch(r -> r.contains("INVALID_COST_A2"));
     }
+
+    @Test
+    @DisplayName("Informational converted yield: populated on result but marks DATA_DEFICIENT with null revenues")
+    void testInformationalConvertedYield_PopulatesBenchmarkYield_MarksDataDeficient() {
+        CropMaster syntheticCotton = CropMaster.builder()
+                .id(3L)
+                .canonicalName("Cotton")
+                .marketCommodityName("Cotton")
+                .category(CropCategory.COMMERCIAL)
+                .build();
+
+        // findBenchmark (decision eligible) returns empty
+        when(yieldBenchmarkProvider.findBenchmark(eq(3L), anyString(), any()))
+                .thenReturn(Optional.empty());
+
+        // findInformationalBenchmark returns the converted benchmark
+        CropYieldBenchmarkDto infoDto = CropYieldBenchmarkDto.builder()
+                .cropId(3L)
+                .canonicalName("Cotton")
+                .state("GUJARAT")
+                .season("KHARIF")
+                .yieldQuintalsPerHectare(new BigDecimal("18.06"))
+                .yieldUnit("QUINTAL_PER_HA")
+                .evidenceTier("VERIFIED_CONVERTED")
+                .notes("Converted from DES lint using 33.33% GOT")
+                .usageScope(com.farmengine.entity.BenchmarkUsageScope.INFORMATIONAL_DISPLAY)
+                .decisionEligible(false)
+                .build();
+        when(yieldBenchmarkProvider.findInformationalBenchmark(eq(3L), anyString(), any()))
+                .thenReturn(Optional.of(infoDto));
+
+        CropEconomicResultDto result = evaluationService.evaluateEconomicFeasibility(
+                CropEconomicEvaluationRequest.builder()
+                        .crop(syntheticCotton)
+                        .state("Gujarat")
+                        .district("Rajkot")
+                        .season(GrowingSeason.KHARIF)
+                        .evaluationDate(standardEvalDate)
+                        .build()
+        );
+
+        assertThat(result.getStatus()).isEqualTo(EconomicDataSufficiencyStatus.DATA_DEFICIENT);
+        assertThat(result.getBenchmarkYieldQuintalsPerHa()).isEqualTo(new BigDecimal("18.06"));
+        assertThat(result.getAdjustedYieldQuintalsPerHa()).isNull();
+        assertThat(result.getExpectedGrossRevenuePerHectare()).isNull();
+        assertThat(result.getExpectedNetOperatingMarginPerHectare()).isNull();
+        assertThat(result.getExpectedBenefitCostRatio()).isNull();
+        assertThat(result.getMissingDataReasons()).anyMatch(r -> r.contains("INELIGIBLE_CONVERTED_YIELD"));
+    }
 }
