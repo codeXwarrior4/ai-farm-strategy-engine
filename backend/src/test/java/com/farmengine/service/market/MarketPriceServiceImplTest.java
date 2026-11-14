@@ -213,4 +213,91 @@ class MarketPriceServiceImplTest {
         assertThat(response.getRecordCount()).isEqualTo(1);
         assertThat(response.getRecords().get(0).getArrivalDate()).isEqualTo(targetDate);
     }
+
+    @Test
+    @DisplayName("getMarketPricesForFarmer classifies DEMO_SEEDED records as DEMO_DATA freshness")
+    void getMarketPrices_demoDataOnly_markedDemoData() {
+        LocalDate today = LocalDate.now();
+        MarketPriceRecord demoRecord = MarketPriceRecord.builder()
+                .state("Punjab")
+                .district("Ludhiana")
+                .market("Demo Mandi")
+                .commodity("Wheat")
+                .variety("Common")
+                .grade("FAQ")
+                .arrivalDate(today)
+                .minPrice(new BigDecimal("2100.00"))
+                .maxPrice(new BigDecimal("2300.00"))
+                .modalPrice(new BigDecimal("2200.00"))
+                .currency("INR")
+                .priceUnit("Rs/Quintal")
+                .sourceProvider("data.gov.in")
+                .sourceClassification(com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED)
+                .retrievalTimestamp(LocalDateTime.now())
+                .build();
+        marketRecordRepository.save(demoRecord);
+
+        FarmerMarketPricesResponse response = marketPriceService.getMarketPricesForFarmer(userId, "Wheat", null, 20);
+
+        assertThat(response.getRecordCount()).isEqualTo(1);
+        assertThat(response.getFreshness().getFreshnessStatus()).isEqualTo("DEMO_DATA");
+        assertThat(response.getFreshness().getSourceClassification()).isEqualTo(com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED);
+        assertThat(response.getRecords().get(0).getSourceClassification()).isEqualTo(com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED);
+        assertThat(response.getAttribution().getDisclaimer()).contains("DEMO DATA NOTICE");
+    }
+
+    @Test
+    @DisplayName("getMarketPricesForFarmer prioritizes OFFICIAL_API records over DEMO_SEEDED records")
+    void getMarketPrices_officialPrioritizedOverDemo() {
+        LocalDate today = LocalDate.now();
+
+        // Seeded demo record
+        MarketPriceRecord demoRecord = MarketPriceRecord.builder()
+                .state("Punjab")
+                .district("Ludhiana")
+                .market("Demo Yard")
+                .commodity("Wheat")
+                .variety("Common")
+                .grade("FAQ")
+                .arrivalDate(today)
+                .minPrice(new BigDecimal("2000.00"))
+                .maxPrice(new BigDecimal("2200.00"))
+                .modalPrice(new BigDecimal("2100.00"))
+                .currency("INR")
+                .priceUnit("Rs/Quintal")
+                .sourceProvider("data.gov.in")
+                .sourceClassification(com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED)
+                .retrievalTimestamp(LocalDateTime.now())
+                .build();
+        marketRecordRepository.save(demoRecord);
+
+        // Official API record
+        MarketPriceRecord officialRecord = MarketPriceRecord.builder()
+                .state("Punjab")
+                .district("Ludhiana")
+                .market("Official Yard")
+                .commodity("Wheat")
+                .variety("PBW-502")
+                .grade("FAQ")
+                .arrivalDate(today)
+                .minPrice(new BigDecimal("2250.00"))
+                .maxPrice(new BigDecimal("2450.00"))
+                .modalPrice(new BigDecimal("2350.00"))
+                .currency("INR")
+                .priceUnit("Rs/Quintal")
+                .sourceProvider("data.gov.in")
+                .sourceClassification(com.farmengine.entity.MarketPriceSourceClassification.OFFICIAL_API)
+                .retrievalTimestamp(LocalDateTime.now())
+                .build();
+        marketRecordRepository.save(officialRecord);
+
+        FarmerMarketPricesResponse response = marketPriceService.getMarketPricesForFarmer(userId, "Wheat", null, 20);
+
+        // Must ONLY return official record, ignoring demo record
+        assertThat(response.getRecordCount()).isEqualTo(1);
+        assertThat(response.getRecords().get(0).getMarket()).isEqualTo("Official Yard");
+        assertThat(response.getRecords().get(0).getSourceClassification()).isEqualTo(com.farmengine.entity.MarketPriceSourceClassification.OFFICIAL_API);
+        assertThat(response.getFreshness().getFreshnessStatus()).isEqualTo("FRESH");
+        assertThat(response.getFreshness().getSourceClassification()).isEqualTo(com.farmengine.entity.MarketPriceSourceClassification.OFFICIAL_API);
+    }
 }

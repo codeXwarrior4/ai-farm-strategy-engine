@@ -34,12 +34,20 @@ class DataGovInMarketServiceTest {
 
     private MockRestServiceServer mockServer;
     private DataGovInMarketService service;
+    private RestClient restClient;
+
+    private static RestClient createSimpleClient() {
+        return RestClient.builder()
+                .requestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory())
+                .build();
+    }
 
     @BeforeEach
     void setUp() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = RestClient.builder()
+                .requestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory());
         mockServer = MockRestServiceServer.bindTo(builder).build();
-        RestClient restClient = builder.build();
+        restClient = builder.build();
 
         service = new DataGovInMarketService(
                 restClient,
@@ -157,7 +165,7 @@ class DataGovInMarketServiceTest {
     @DisplayName("fetchRecordsPage throws MarketProviderException when API key is blank without making network call")
     void fetchRecordsPage_missingApiKey_throwsException() {
         DataGovInMarketService noKeyService = new DataGovInMarketService(
-                RestClient.builder().build(),
+                createSimpleClient(),
                 BASE_URL,
                 RESOURCE_ID,
                 "", // empty API key
@@ -286,5 +294,31 @@ class DataGovInMarketServiceTest {
 
         mockServer.verify();
         assertThat(records).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("isApiKeyConfigured accurately detects present vs missing API keys")
+    void isApiKeyConfigured_detectsPresenceCorrectly() {
+        assertThat(service.isApiKeyConfigured()).isTrue();
+
+        DataGovInMarketService emptyKeyService = new DataGovInMarketService(
+                createSimpleClient(),
+                BASE_URL,
+                RESOURCE_ID,
+                "",
+                10,
+                3
+        );
+        assertThat(emptyKeyService.isApiKeyConfigured()).isFalse();
+
+        DataGovInMarketService nullKeyService = new DataGovInMarketService(
+                createSimpleClient(),
+                BASE_URL,
+                RESOURCE_ID,
+                null,
+                10,
+                3
+        );
+        assertThat(nullKeyService.isApiKeyConfigured()).isFalse();
     }
 }

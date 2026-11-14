@@ -1117,5 +1117,68 @@ class FarmStrategyServiceTest {
         assertThat(result.getMarketAttractiveness().getDaysOld()).isEqualTo(14L);
         assertThat(result.getDecisionTier()).isEqualTo(StrategyDecisionTier.CONDITIONAL);
     }
+
+    @Test
+    @DisplayName("Market Provenance: When market prices are DEMO_DATA, assigns DEMO_DATA status, adds warning, and enforces CONDITIONAL tier")
+    void testMarketProvenance_whenDemoData_assignsDemoStatusAndWarning() {
+        when(farmerProfileRepository.findByOwnerId(1L)).thenReturn(Optional.of(testProfile));
+        when(cropMasterRepository.findAllById(List.of(1L))).thenReturn(List.of(wheat));
+        when(weatherService.getWeatherForFarmer(1L)).thenReturn(createFavorableWeather());
+
+        CropSuitabilityResult suitRes = CropSuitabilityResult.builder()
+                .cropId(1L)
+                .canonicalName("Wheat")
+                .overallSuitability(SuitabilityLevel.HIGHLY_SUITABLE)
+                .excluded(false)
+                .build();
+        when(cropSuitabilityService.evaluateCrop(eq(wheat), any(), eq(GrowingSeason.RABI))).thenReturn(suitRes);
+
+        CropFinancialFeasibilityResult finRes = CropFinancialFeasibilityResult.builder()
+                .cropId(1L)
+                .canonicalName("Wheat")
+                .status(FinancialFeasibilityStatus.FEASIBLE)
+                .capitalSufficiencyRatio(new BigDecimal("1.50"))
+                .costPerHectareA2(new BigDecimal("20000.00"))
+                .affordableHectares(new BigDecimal("3.00"))
+                .build();
+        when(cropFinancialFeasibilityService.evaluateFeasibility(any()))
+                .thenReturn(CropFinancialFeasibilityResponse.builder().results(List.of(finRes)).build());
+
+        MarketPriceItemDto item = MarketPriceItemDto.builder()
+                .commodity("Wheat")
+                .market("Jalna Mandi")
+                .arrivalDate(LocalDate.now())
+                .modalPrice(new BigDecimal("2600.00"))
+                .minPrice(new BigDecimal("2400.00"))
+                .maxPrice(new BigDecimal("2750.00"))
+                .sourceClassification(com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED)
+                .build();
+
+        FarmerMarketPricesResponse marketResponse = FarmerMarketPricesResponse.builder()
+                .records(List.of(item))
+                .freshness(com.farmengine.dto.market.MarketFreshnessMetadataDto.builder()
+                        .dataAvailable(true)
+                        .latestArrivalDate(LocalDate.now())
+                        .daysOld(0L)
+                        .isStale(false)
+                        .freshnessStatus("DEMO_DATA")
+                        .sourceClassification(com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED)
+                        .build())
+                .build();
+        when(marketPriceService.getMarketPricesForFarmer(eq(1L), eq("Wheat"), isNull(), eq(10)))
+                .thenReturn(marketResponse);
+
+        FarmStrategyEvaluationRequest request = FarmStrategyEvaluationRequest.builder()
+                .targetSeason(GrowingSeason.RABI)
+                .candidateCropIds(List.of(1L))
+                .build();
+
+        FarmStrategyEvaluationResponse response = strategyService.evaluateStrategy(1L, request);
+
+        CropStrategyResultDto result = response.getCandidateCrops().get(0);
+        assertThat(result.getMarketAttractiveness().getStatus()).isEqualTo(MarketAttractivenessStatus.DEMO_DATA);
+        assertThat(result.getMarketAttractiveness().getWarnings()).anyMatch(w -> w.contains("DEMO_MARKET_DATA"));
+        assertThat(result.getDecisionTier()).isEqualTo(StrategyDecisionTier.CONDITIONAL);
+    }
 }
 

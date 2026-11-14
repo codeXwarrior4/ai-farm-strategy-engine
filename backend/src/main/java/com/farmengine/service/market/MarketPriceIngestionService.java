@@ -3,6 +3,7 @@ package com.farmengine.service.market;
 import com.farmengine.dto.market.IngestionResult;
 import com.farmengine.dto.market.datagovin.DataGovInRecordDto;
 import com.farmengine.entity.MarketPriceRecord;
+import com.farmengine.entity.MarketPriceSourceClassification;
 import com.farmengine.repository.MarketPriceRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,19 +44,30 @@ public class MarketPriceIngestionService {
     private final DataGovInMarketService dataGovInMarketService;
 
     /**
-     * Fetches market price records from data.gov.in and ingests them.
+     * Fetches market price records from data.gov.in and ingests them as OFFICIAL_API records.
      */
     public IngestionResult fetchAndIngest(Map<String, String> filters, Integer maxPages) {
         List<DataGovInRecordDto> rawRecords = dataGovInMarketService.fetchAllRecords(filters, maxPages);
-        return ingestRecords(rawRecords, "DATA_GOV_IN");
+        return ingestRecords(rawRecords, "DATA_GOV_IN", MarketPriceSourceClassification.OFFICIAL_API);
     }
 
     /**
-     * Validates, deduplicates, and ingests a batch of raw provider records.
-     * An individual malformed or duplicate record will not fail the batch.
+     * Validates, deduplicates, and ingests a batch of raw provider records with default OFFICIAL_API provenance.
      */
     public IngestionResult ingestRecords(List<DataGovInRecordDto> records, String sourceProvider) {
+        return ingestRecords(records, sourceProvider, MarketPriceSourceClassification.OFFICIAL_API);
+    }
+
+    /**
+     * Validates, deduplicates, and ingests a batch of raw provider records with explicit provenance.
+     * An individual malformed or duplicate record will not fail the batch.
+     */
+    public IngestionResult ingestRecords(List<DataGovInRecordDto> records, String sourceProvider, MarketPriceSourceClassification classification) {
         LocalDateTime retrievalTime = LocalDateTime.now();
+        MarketPriceSourceClassification effectiveClassification = (classification != null)
+                ? classification
+                : MarketPriceSourceClassification.OFFICIAL_API;
+
         IngestionResult result = IngestionResult.builder()
                 .ingestionTimestamp(retrievalTime)
                 .build();
@@ -114,6 +126,12 @@ public class MarketPriceIngestionService {
                 continue;
             }
 
+            if (arrivalDate.isAfter(LocalDate.now())) {
+                rejected++;
+                reasons.add("Row " + rowNum + " [" + raw.getCommodity() + "]: arrival_date cannot be in the future (" + arrivalDate + ")");
+                continue;
+            }
+
             // Price validations
             BigDecimal minPrice;
             try {
@@ -156,7 +174,7 @@ public class MarketPriceIngestionService {
             String variety = cleanOptionalField(raw.getVariety());
             String grade = cleanOptionalField(raw.getGrade());
 
-            // Compute deterministic deduplication key
+            // Compute deterministic deduplication key including provenance
             String dedupKey = MarketPriceRecord.calculateDeduplicationKey(
                     raw.getState(),
                     raw.getDistrict(),
@@ -164,7 +182,8 @@ public class MarketPriceIngestionService {
                     raw.getCommodity(),
                     variety,
                     grade,
-                    arrivalDate
+                    arrivalDate,
+                    effectiveClassification
             );
 
             // Check existence idempotently prior to save
@@ -187,6 +206,7 @@ public class MarketPriceIngestionService {
                     .priceUnit("INR_PER_QUINTAL")
                     .currency("INR")
                     .sourceProvider(sourceProvider != null ? sourceProvider : "DATA_GOV_IN")
+                    .sourceClassification(effectiveClassification)
                     .retrievalTimestamp(retrievalTime)
                     .deduplicationKey(dedupKey)
                     .build();

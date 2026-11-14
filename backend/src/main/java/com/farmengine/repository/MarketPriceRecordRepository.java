@@ -1,6 +1,7 @@
 package com.farmengine.repository;
 
 import com.farmengine.entity.MarketPriceRecord;
+import com.farmengine.entity.MarketPriceSourceClassification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -71,4 +72,52 @@ public interface MarketPriceRecordRepository extends JpaRepository<MarketPriceRe
      */
     Optional<MarketPriceRecord> findTopByStateIgnoreCaseAndDistrictIgnoreCaseOrderByArrivalDateDesc(
             String state, String district);
+
+    /**
+     * Checks if any records exist with the given source classification for a state and district.
+     */
+    boolean existsByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassification(
+            String state, String district, MarketPriceSourceClassification sourceClassification);
+
+    /**
+     * Checks if any records exist with the given source classification for a state, district, and commodity.
+     */
+    boolean existsByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassification(
+            String state, String district, String commodity, MarketPriceSourceClassification sourceClassification);
+
+    /**
+     * Provenance-scoped query for state, district, and source classification.
+     */
+    List<MarketPriceRecord> findByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
+            String state, String district, MarketPriceSourceClassification sourceClassification, org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Provenance-scoped query for state, district, commodity, and source classification.
+     */
+    List<MarketPriceRecord> findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
+            String state, String district, String commodity, MarketPriceSourceClassification sourceClassification, org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Provenance-scoped query for state, district, arrival date, and source classification.
+     */
+    List<MarketPriceRecord> findByStateIgnoreCaseAndDistrictIgnoreCaseAndArrivalDateAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
+            String state, String district, LocalDate arrivalDate, MarketPriceSourceClassification sourceClassification, org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Provenance-scoped query for state, district, commodity, arrival date, and source classification.
+     */
+    List<MarketPriceRecord> findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndArrivalDateAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
+            String state, String district, String commodity, LocalDate arrivalDate, MarketPriceSourceClassification sourceClassification, org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Retrieves the most recent provenance-scoped record for a state and district.
+     */
+    Optional<MarketPriceRecord> findTopByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassificationOrderByArrivalDateDesc(
+            String state, String district, MarketPriceSourceClassification sourceClassification);
+
+    /**
+     * Retrieves the most recent provenance-scoped record for a state, district, and commodity.
+     */
+    Optional<MarketPriceRecord> findTopByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassificationOrderByArrivalDateDesc(
+            String state, String district, String commodity, MarketPriceSourceClassification sourceClassification);
 }

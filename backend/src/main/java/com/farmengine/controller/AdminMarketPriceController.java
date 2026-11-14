@@ -46,7 +46,10 @@ public class AdminMarketPriceController {
             String source = (effectiveRequest.getSourceProvider() != null && !effectiveRequest.getSourceProvider().isBlank())
                     ? effectiveRequest.getSourceProvider().trim()
                     : "DATA_GOV_IN";
-            result = ingestionService.ingestRecords(effectiveRequest.getRecords(), source);
+            com.farmengine.entity.MarketPriceSourceClassification classification = (effectiveRequest.getSourceClassification() != null)
+                    ? effectiveRequest.getSourceClassification()
+                    : com.farmengine.entity.MarketPriceSourceClassification.MANUAL_VERIFIED;
+            result = ingestionService.ingestRecords(effectiveRequest.getRecords(), source, classification);
         } else {
             result = ingestionService.fetchAndIngest(effectiveRequest.getFilters(), effectiveRequest.getMaxPages());
         }

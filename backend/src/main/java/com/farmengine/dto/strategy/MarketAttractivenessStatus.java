@@ -27,6 +27,11 @@ public enum MarketAttractivenessStatus {
     STALE_DATA,
 
     /**
+     * Records originate from demonstration sample data; cannot support production financial assertions.
+     */
+    DEMO_DATA,
+
+    /**
      * No mandi records found for this commodity in the farmer's district/state.
      */
     NO_MARKET_DATA,

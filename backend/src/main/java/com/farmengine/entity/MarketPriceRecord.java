@@ -94,12 +94,17 @@ public class MarketPriceRecord {
     @Column(name = "source_record_id", length = 255)
     private String sourceRecordId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_classification", nullable = false, length = 30)
+    @Builder.Default
+    private MarketPriceSourceClassification sourceClassification = MarketPriceSourceClassification.OFFICIAL_API;
+
     @Column(name = "retrieval_timestamp", nullable = false)
     private LocalDateTime retrievalTimestamp;
 
     /**
      * SHA-256 deterministic hash of normalized natural key:
-     * state, district, market, commodity, variety, grade, arrival_date.
+     * state, district, market, commodity, variety, grade, arrival_date, source_classification.
      * Guarantees engine-agnostic deduplication even with nullable variety/grade.
      */
     @Column(name = "deduplication_key", nullable = false, unique = true, length = 64)
@@ -110,7 +115,7 @@ public class MarketPriceRecord {
     private LocalDateTime createdAt;
 
     /**
-     * Calculates deterministic deduplication key from natural key components.
+     * Calculates deterministic deduplication key from natural key components including provenance.
      * Trims and normalizes strings to lower case. Null or blank variety/grade are
      * canonicalized to empty strings to ensure identical hashing regardless of DB engine NULL rules.
      */
@@ -121,7 +126,8 @@ public class MarketPriceRecord {
             String commodity,
             String variety,
             String grade,
-            LocalDate arrivalDate
+            LocalDate arrivalDate,
+            MarketPriceSourceClassification classification
     ) {
         if (state == null || district == null || market == null || commodity == null || arrivalDate == null) {
             throw new IllegalArgumentException("State, district, market, commodity, and arrivalDate must not be null");
@@ -133,8 +139,9 @@ public class MarketPriceRecord {
         String sVariety = (variety == null || variety.trim().isEmpty()) ? "" : variety.trim().toLowerCase(Locale.ROOT);
         String sGrade = (grade == null || grade.trim().isEmpty()) ? "" : grade.trim().toLowerCase(Locale.ROOT);
         String sDate = arrivalDate.toString();
+        String sClass = (classification == null) ? "official_api" : classification.name().toLowerCase(Locale.ROOT);
 
-        String rawKey = sState + "|" + sDistrict + "|" + sMarket + "|" + sCommodity + "|" + sVariety + "|" + sGrade + "|" + sDate;
+        String rawKey = sState + "|" + sDistrict + "|" + sMarket + "|" + sCommodity + "|" + sVariety + "|" + sGrade + "|" + sDate + "|" + sClass;
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -151,6 +158,21 @@ public class MarketPriceRecord {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 algorithm not available in runtime environment", e);
         }
+    }
+
+    /**
+     * Backward-compatible overload defaulting to OFFICIAL_API classification.
+     */
+    public static String calculateDeduplicationKey(
+            String state,
+            String district,
+            String market,
+            String commodity,
+            String variety,
+            String grade,
+            LocalDate arrivalDate
+    ) {
+        return calculateDeduplicationKey(state, district, market, commodity, variety, grade, arrivalDate, MarketPriceSourceClassification.OFFICIAL_API);
     }
 
     /**

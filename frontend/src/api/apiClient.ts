@@ -1,11 +1,11 @@
 /**
- * Centralized API client using Axios.
- *
- * - Base URL comes from environment variable VITE_API_BASE_URL.
- * - All requests include JSON content type by default.
- * - Error responses are passed through as ApiError instances.
- * - No secrets are hardcoded here.
- */
+* Centralized API client using Axios.
+*
+* - Base URL comes from environment variable VITE_API_BASE_URL.
+* - All requests include JSON content type by default.
+* - Error responses are passed through as ApiError instances.
+* - No secrets are hardcoded here.
+*/
 
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
 

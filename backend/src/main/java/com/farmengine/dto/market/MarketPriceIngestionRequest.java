@@ -1,6 +1,7 @@
 package com.farmengine.dto.market;
 
 import com.farmengine.dto.market.datagovin.DataGovInRecordDto;
+import com.farmengine.entity.MarketPriceSourceClassification;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -48,4 +49,9 @@ public class MarketPriceIngestionRequest {
      * Optional source provider label (defaults to DATA_GOV_IN).
      */
     private String sourceProvider;
+
+    /**
+     * Optional explicit provenance classification for direct batches (defaults to MANUAL_VERIFIED).
+     */
+    private MarketPriceSourceClassification sourceClassification;
 }

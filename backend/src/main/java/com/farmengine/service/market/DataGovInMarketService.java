@@ -56,6 +56,19 @@ public class DataGovInMarketService {
         this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.defaultPageSize = defaultPageSize > 0 ? defaultPageSize : 50;
         this.defaultMaxPages = defaultMaxPages > 0 ? defaultMaxPages : 5;
+
+        if (this.apiKey.isBlank()) {
+            log.info("DataGovInMarketService initialized. data.gov.in API key is NOT configured. Live market price ingestion will be disabled until DATA_GOV_IN_API_KEY is provided.");
+        } else {
+            log.info("DataGovInMarketService initialized with configured API key. Target resource: {}", this.resourceId);
+        }
+    }
+
+    /**
+     * Checks if the data.gov.in API key is configured.
+     */
+    public boolean isApiKeyConfigured() {
+        return !apiKey.isBlank();
     }
 
     /**

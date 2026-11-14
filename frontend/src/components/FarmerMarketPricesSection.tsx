@@ -193,24 +193,45 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
 
           {!isLoading && marketData?.freshness && (
             <>
+              {marketData.freshness.sourceClassification === 'OFFICIAL_API' && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  OFFICIAL AGMARKNET DATA
+                </span>
+              )}
+
+              {marketData.freshness.sourceClassification === 'DEMO_SEEDED' && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/40">
+                  <span>🧪</span>
+                  DEMO DATA
+                </span>
+              )}
+
               {marketData.freshness.freshnessStatus === 'FRESH' && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Fresh Rates ({formatDate(marketData.freshness.latestArrivalDate ?? undefined)})
+                  Fresh ({formatDate(marketData.freshness.latestArrivalDate ?? undefined)})
                 </span>
               )}
 
               {marketData.freshness.freshnessStatus === 'STALE' && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
                   <span>⚠️</span>
-                  Stale ({marketData.freshness.daysOld}d old)
+                  STALE DATA ({marketData.freshness.daysOld}d old)
                 </span>
               )}
 
               {marketData.freshness.freshnessStatus === 'NO_DATA' && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/20 text-slate-300 border border-slate-500/30">
                   <span>ℹ️</span>
-                  No Mandi Data
+                  NO RECENT DATA
+                </span>
+              )}
+
+              {marketData.freshness.liveSyncStatus === 'API_KEY_NOT_CONFIGURED' && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-slate-700/50 text-slate-300 border border-slate-600/40" title="DATA_GOV_IN_API_KEY environment variable is not configured on backend">
+                  <span>🔒</span>
+                  LIVE SYNC UNAVAILABLE
                 </span>
               )}
             </>
@@ -375,6 +396,24 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
             </div>
           )}
 
+          {/* DEMO DATA NOTICE BANNER */}
+          {marketData?.freshness?.freshnessStatus === 'DEMO_DATA' && (
+            <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/30 text-purple-200">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">🧪</span>
+                <div>
+                  <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider mb-1">
+                    Demonstration Mandi Prices Notice
+                  </h4>
+                  <p className="text-xs text-purple-200/90 leading-relaxed">
+                    The rates shown below are seeded demonstration sample records for development and UI preview.
+                    Live official observations from the government data.gov.in AGMARKNET feed will replace these records once an administrator ingests live data with a configured API key.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* STATE 3: EMPTY DATA */}
           {!isLoading && !error && marketData && marketData.records.length === 0 && (
             <div className="p-8 rounded-xl bg-white/5 border border-white/10 text-center">
@@ -430,13 +469,27 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                           <h4 className="text-sm font-bold text-slate-100 leading-snug">
                             {item.commodity}
                           </h4>
-                          <span className="text-xs text-slate-400 block">
-                            {item.market}
+                          <span className="text-xs text-indigo-300 font-medium block">
+                            APMC Mandi: <span className="text-slate-200 font-semibold">{item.market}</span>
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            District: {primaryDistrict || 'Local District'}
                           </span>
                         </div>
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
-                          {item.arrivalDate}
-                        </span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
+                            {formatDate(item.arrivalDate)}
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                              item.sourceClassification === 'OFFICIAL_API'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            }`}
+                          >
+                            {item.sourceClassification === 'OFFICIAL_API' ? 'Official AGMARKNET' : 'Demo Data'}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Variety & Grade tags */}

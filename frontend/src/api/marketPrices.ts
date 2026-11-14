@@ -1,5 +1,7 @@
 import { apiClient, handleAxiosError } from './apiClient';
 
+export type SourceClassification = 'OFFICIAL_API' | 'DEMO_SEEDED' | 'MANUAL_VERIFIED';
+
 export interface MarketPriceItem {
   id: number;
   market: string;
@@ -14,9 +16,10 @@ export interface MarketPriceItem {
   priceUnit: string;
   retrievalTimestamp: string;
   sourceProvider: string;
+  sourceClassification?: SourceClassification;
 }
 
-export type FreshnessStatus = 'FRESH' | 'STALE' | 'NO_DATA' | 'NO_LOCATION';
+export type FreshnessStatus = 'FRESH' | 'STALE' | 'NO_DATA' | 'NO_LOCATION' | 'DEMO_DATA' | 'API_UNAVAILABLE';
 
 export interface MarketFreshnessMetadata {
   dataAvailable: boolean;
@@ -25,6 +28,9 @@ export interface MarketFreshnessMetadata {
   isStale: boolean;
   freshnessThresholdDays: number;
   freshnessStatus: FreshnessStatus;
+  sourceClassification?: SourceClassification | null;
+  liveSyncStatus?: string;
+  freshnessDescription?: string;
 }
 
 export interface MarketAttribution {

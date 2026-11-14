@@ -22,10 +22,10 @@ public class MarketClientConfig {
     private int readTimeoutMs;
 
     @Bean("marketRestClient")
-    public RestClient marketRestClient(RestClient.Builder builder) {
+    public RestClient marketRestClient() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
         factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
-        return builder.requestFactory(factory).build();
+        return RestClient.builder().requestFactory(factory).build();
     }
 }

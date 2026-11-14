@@ -239,4 +239,40 @@ class MarketPriceIngestionServiceTest {
         long countAfter = repository.count();
         assertThat(countAfter).isEqualTo(countBefore);
     }
+
+    @Test
+    @DisplayName("ingestRecords rejects future arrival dates without crashing")
+    void ingestRecords_futureArrivalDate_rejected() {
+        LocalDate futureDate = LocalDate.now().plusDays(5);
+        String formattedFuture = String.format("%02d/%02d/%d", futureDate.getDayOfMonth(), futureDate.getMonthValue(), futureDate.getYear());
+
+        DataGovInRecordDto futureRecord = createValidRecord("Wheat", "2000", "2400", "2200");
+        futureRecord.setArrivalDate(formattedFuture);
+
+        IngestionResult result = ingestionService.ingestRecords(List.of(futureRecord), "DATA_GOV_IN");
+
+        assertThat(result.getInsertedCount()).isEqualTo(0);
+        assertThat(result.getRejectedCount()).isEqualTo(1);
+        assertThat(result.getRejectionReasons().get(0)).contains("cannot be in the future");
+    }
+
+    @Test
+    @DisplayName("ingestRecords assigns and persists source classification")
+    void ingestRecords_persistsSourceClassification() {
+        DataGovInRecordDto dto = createValidRecord("Soyabean", "4200", "4800", "4600");
+        dto.setArrivalDate("20/10/2026");
+
+        IngestionResult result = ingestionService.ingestRecords(
+                List.of(dto),
+                "DATA_GOV_IN",
+                com.farmengine.entity.MarketPriceSourceClassification.OFFICIAL_API
+        );
+
+        assertThat(result.getInsertedCount()).isEqualTo(1);
+
+        List<MarketPriceRecord> records = repository.findByCommodityAndArrivalDate("Soyabean", LocalDate.of(2026, 10, 20));
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).getSourceClassification())
+                .isEqualTo(com.farmengine.entity.MarketPriceSourceClassification.OFFICIAL_API);
+    }
 }

@@ -161,7 +161,7 @@ class AdminMarketPriceControllerTest {
                 .ingestionTimestamp(LocalDateTime.now())
                 .build();
 
-        when(ingestionService.ingestRecords(any(), any())).thenReturn(mockResult);
+        when(ingestionService.ingestRecords(any(), any(), any())).thenReturn(mockResult);
 
         MarketPriceIngestionRequest request = MarketPriceIngestionRequest.builder()
                 .records(List.of(record))
@@ -176,7 +176,7 @@ class AdminMarketPriceControllerTest {
                 .andExpect(jsonPath("$.totalFetched").value(1))
                 .andExpect(jsonPath("$.insertedCount").value(1));
 
-        verify(ingestionService).ingestRecords(any(), eq("VERIFIED_CACP_TEST_FEED"));
+        verify(ingestionService).ingestRecords(any(), eq("VERIFIED_CACP_TEST_FEED"), any());
     }
 
     @Test

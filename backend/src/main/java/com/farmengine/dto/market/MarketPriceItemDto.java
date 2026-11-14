@@ -1,5 +1,6 @@
 package com.farmengine.dto.market;
 
+import com.farmengine.entity.MarketPriceSourceClassification;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -30,4 +31,5 @@ public class MarketPriceItemDto {
     private String priceUnit;
     private LocalDateTime retrievalTimestamp;
     private String sourceProvider;
+    private MarketPriceSourceClassification sourceClassification;
 }

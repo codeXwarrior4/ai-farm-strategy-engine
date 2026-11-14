@@ -510,13 +510,40 @@ export function generateFarmReportPdf(input: FarmReportPdfInput): jsPDF {
 
   const mktFreshness = marketPricesResponse?.freshness;
   const mktAttribution = marketPricesResponse?.attribution?.providerName || 'data.gov.in / AGMARKNET';
+  const isDemoMarketData = mktFreshness?.sourceClassification === 'DEMO_SEEDED' || mktFreshness?.freshnessStatus === 'DEMO_DATA';
+
+  // Demo market data warning banner in PDF
+  if (isDemoMarketData) {
+    checkPageBreak(20);
+    doc.setFillColor(...COLORS.statusAmberBg);
+    doc.setDrawColor(...COLORS.statusAmberText);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(PAGE.marginLeft, currentY, PAGE.contentWidth, 14, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COLORS.statusAmberText);
+    doc.text('DEMONSTRATION MARKET DATA NOTICE (UNVERIFIED SAMPLE PRICES):', PAGE.marginLeft + 4, currentY + 5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(...COLORS.charcoal);
+    doc.text(
+      'Mandi wholesale prices below originate from demonstration seed data and are NOT verified daily government observations.\n' +
+      'Commercial planting decisions must rely on official live AGMARKNET synchronization.',
+      PAGE.marginLeft + 4,
+      currentY + 9
+    );
+    currentY += 18;
+  }
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...COLORS.charcoal);
   const mktStatusText =
     `Market Data Source: ${mktAttribution} under Government Open Data License (GODL).\n` +
-    `Data Freshness Status: ${mktFreshness?.freshnessStatus || (mktFreshness?.isStale ? 'STALE' : 'FRESH')} ` +
+    `Provenance: ${mktFreshness?.sourceClassification === 'OFFICIAL_API' ? 'Official AGMARKNET Observation' : (isDemoMarketData ? 'Demonstration Sample Data' : 'Standard Persistence')} | ` +
+    `Freshness Status: ${mktFreshness?.freshnessStatus || (mktFreshness?.isStale ? 'STALE' : 'FRESH')} ` +
     `(${mktFreshness?.latestArrivalDate ? `Latest Arrival: ${mktFreshness.latestArrivalDate}` : 'No recent arrivals'}, ` +
     `${mktFreshness?.daysOld != null ? `${mktFreshness.daysOld} days old` : 'Age undetermined'}).`;
   const splitMkt = doc.splitTextToSize(mktStatusText, PAGE.contentWidth);
@@ -527,25 +554,23 @@ export function generateFarmReportPdf(input: FarmReportPdfInput): jsPDF {
     const recordsToDisplay = marketPricesResponse.records.slice(0, 10);
     const mktRows = recordsToDisplay.map((rec) => [
       rec.commodity || '—',
-      rec.variety || 'Common',
-      rec.market || 'District Mandi',
+      `${rec.variety || 'Common'}${rec.grade ? ` (${rec.grade})` : ''}`,
+      rec.market ? `APMC ${rec.market}` : 'District Mandi',
       rec.arrivalDate || 'Recent',
       formatInr(rec.minPrice),
       formatInr(rec.modalPrice),
       formatInr(rec.maxPrice),
-      rec.modalPrice && rec.minPrice && rec.maxPrice
-        ? `${formatNumber(((rec.maxPrice - rec.minPrice) / rec.modalPrice) * 100, 1)}%`
-        : '—',
+      rec.sourceClassification === 'OFFICIAL_API' ? 'Official' : (rec.sourceClassification === 'DEMO_SEEDED' ? 'Demo' : 'Persistent'),
     ]);
 
     autoTable(doc, {
       startY: currentY,
       margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
       theme: 'grid',
-      head: [['Commodity', 'Variety', 'Mandi Market', 'Arrival Date', 'Min Price', 'Modal Price', 'Max Price', 'Spread']],
+      head: [['Commodity', 'Variety & Grade', 'APMC Mandi (Yard)', 'Arrival Date', 'Min Price', 'Modal Price', 'Max Price', 'Source']],
       body: mktRows,
       headStyles: {
-        fillColor: COLORS.secondaryGreen,
+        fillColor: isDemoMarketData ? COLORS.statusAmberText : COLORS.secondaryGreen,
         textColor: COLORS.pureWhite,
         fontStyle: 'bold',
         fontSize: 7.5,
@@ -557,10 +582,12 @@ export function generateFarmReportPdf(input: FarmReportPdfInput): jsPDF {
         cellPadding: 1.8,
       },
       columnStyles: {
+        0: { fontStyle: 'bold' },
+        2: { fontStyle: 'bold' },
         4: { halign: 'right' },
         5: { halign: 'right', fontStyle: 'bold' },
         6: { halign: 'right' },
-        7: { halign: 'right', textColor: COLORS.mutedSlate },
+        7: { halign: 'center', fontStyle: 'bold' },
       },
     });
 

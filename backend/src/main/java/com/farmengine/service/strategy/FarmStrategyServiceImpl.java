@@ -427,7 +427,14 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
         List<String> warnings = new ArrayList<>();
         String explanation;
 
-        if (isStale) {
+        boolean isDemoData = (response.getFreshness() != null && "DEMO_DATA".equalsIgnoreCase(response.getFreshness().getFreshnessStatus()))
+                || (latest.getSourceClassification() == com.farmengine.entity.MarketPriceSourceClassification.DEMO_SEEDED);
+
+        if (isDemoData) {
+            status = MarketAttractivenessStatus.DEMO_DATA;
+            warnings.add("DEMO_MARKET_DATA: Market prices originate from demonstration sample data and cannot support production financial assertions.");
+            explanation = "Wholesale prices are based on demonstration data. Live AGMARKNET observations must be ingested before using prices for commercial crop planning.";
+        } else if (isStale) {
             status = MarketAttractivenessStatus.STALE_DATA;
             warnings.add("STALE_MARKET_DATA: Latest recorded mandi arrival is " + daysOld + " days old (threshold: 7 days).");
             explanation = (evaluationDate != null)
@@ -608,9 +615,10 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
             return true;
         }
 
-        // 3. Stale or volatile market data
+        // 3. Stale, volatile, or demo market data
         if (marketDto.getStatus() == MarketAttractivenessStatus.STALE_DATA
-                || marketDto.getStatus() == MarketAttractivenessStatus.VOLATILE) {
+                || marketDto.getStatus() == MarketAttractivenessStatus.VOLATILE
+                || marketDto.getStatus() == MarketAttractivenessStatus.DEMO_DATA) {
             return true;
         }
 
@@ -658,6 +666,9 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
         if (marketDto.getStatus() == MarketAttractivenessStatus.NO_MARKET_DATA) {
             caveats.add("local mandi wholesale price records are not available");
             primaryWarnings.add("MISSING_MARKET_EVIDENCE: Local mandi wholesale price evidence is not available for this commodity in the farmer's district/state. Market attractiveness could not be evaluated. Cultivation is agronomically suitable and financially feasible, but local commercial demand and buyer channels must be verified independently before planting.");
+        } else if (marketDto.getStatus() == MarketAttractivenessStatus.DEMO_DATA) {
+            caveats.add("market price records originate from unverified demonstration data");
+            primaryWarnings.add("DEMO_MARKET_DATA: Market prices are based on demonstration data. Live AGMARKNET observations should be synchronized before commercial crop investment.");
         } else if (marketDto.getStatus() == MarketAttractivenessStatus.STALE_DATA) {
             caveats.add("market price records are stale (> 7 days)");
             primaryWarnings.add("STALE_MARKET_DATA: Latest recorded mandi arrival is older than 7 days relative to evaluation date.");
@@ -745,8 +756,9 @@ public class FarmStrategyServiceImpl implements FarmStrategyService {
         return switch (dto.getStatus()) {
             case FAVORABLE, MODERATE, VOLATILE -> 0;
             case STALE_DATA -> 1;
-            case NO_MARKET_DATA -> 2;
-            case LOCATION_UNAVAILABLE -> 3;
+            case DEMO_DATA -> 2;
+            case NO_MARKET_DATA -> 3;
+            case LOCATION_UNAVAILABLE -> 4;
         };
     }
 
