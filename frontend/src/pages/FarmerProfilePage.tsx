@@ -15,6 +15,8 @@ import {
   type RiskTolerance,
 } from '../api/farmerProfile';
 import { ApiError, getAuthToken, setAuthToken } from '../api/apiClient';
+import { type FarmerWeatherResponse } from '../api/weather';
+import { type FarmerMarketPricesResponse } from '../api/marketPrices';
 
 type FormState = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -65,6 +67,10 @@ export default function FarmerProfilePage() {
   const [token, setToken] = useState(() => getAuthToken() || '');
   const [isExistingProfile, setIsExistingProfile] = useState(false);
   const [profileData, setProfileData] = useState<FarmerProfileResponse | null>(null);
+
+  // Lifted state for PDF generation — weather and market data surfaced from child sections
+  const [liftedWeatherData, setLiftedWeatherData] = useState<FarmerWeatherResponse | null>(null);
+  const [liftedMarketData, setLiftedMarketData] = useState<FarmerMarketPricesResponse | null>(null);
 
   const [form, setForm] = useState<ProfileFormData>(initialFormData);
   const [formState, setFormState] = useState<FormState>('idle');
@@ -211,6 +217,8 @@ export default function FarmerProfilePage() {
     setFetchState('loading');
     setFetchError('');
     setGlobalError('');
+    setLiftedWeatherData(null);
+    setLiftedMarketData(null);
 
     try {
       const profile = await getFarmerProfile(parsedUserId);
@@ -219,6 +227,9 @@ export default function FarmerProfilePage() {
       setIsExistingProfile(true);
       setFetchState('success');
       setSuccessMessage(`Loaded existing profile for "${profile.fullName}" (Profile ID: ${profile.id}). You can update fields below.`);
+      // Clear stale lifted weather/market so previous session's data cannot appear in a new PDF
+      setLiftedWeatherData(null);
+      setLiftedMarketData(null);
       setWeatherRefreshKey(k => k + 1);
       setMarketRefreshKey(k => k + 1);
     } catch (error) {
@@ -292,6 +303,9 @@ export default function FarmerProfilePage() {
       setProfileData(saved);
       populateFormFromProfile(saved);
       setFormState('success');
+      // Clear stale lifted weather/market so profile-change re-fetches cannot be confused with old data
+      setLiftedWeatherData(null);
+      setLiftedMarketData(null);
       setWeatherRefreshKey(k => k + 1);
       setMarketRefreshKey(k => k + 1);
     } catch (error) {
@@ -326,6 +340,8 @@ export default function FarmerProfilePage() {
     setGlobalError('');
     setSuccessMessage('');
     setFetchError('');
+    setLiftedWeatherData(null);
+    setLiftedMarketData(null);
   }
 
   const isSubmitting = formState === 'submitting';
@@ -896,6 +912,11 @@ export default function FarmerProfilePage() {
             document.getElementById('latitude')?.focus();
           }}
           refreshKey={weatherRefreshKey}
+          onWeatherLoaded={(data, loadedUserId) => {
+            const currentId = parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0);
+            if (loadedUserId && loadedUserId !== currentId) return;
+            setLiftedWeatherData(data);
+          }}
         />
 
         {/* Mandi Market Prices Integration (Phase 2B.2) */}
@@ -909,6 +930,11 @@ export default function FarmerProfilePage() {
             el?.focus();
           }}
           refreshKey={marketRefreshKey}
+          onMarketLoaded={(data, loadedUserId) => {
+            const currentId = parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0);
+            if (loadedUserId && loadedUserId !== currentId) return;
+            setLiftedMarketData(data);
+          }}
         />
 
         {/* Composite Farm Strategy Engine (Phase 3 — Stage 5B.2) */}
@@ -930,6 +956,9 @@ export default function FarmerProfilePage() {
           riskToleranceDefault={
             profileData?.riskTolerance || (form.riskTolerance ? (form.riskTolerance as RiskTolerance) : null)
           }
+          farmerProfile={profileData}
+          weatherResponse={liftedWeatherData}
+          marketPricesResponse={liftedMarketData}
         />
 
         {/* Existing Profile Overview Card */}

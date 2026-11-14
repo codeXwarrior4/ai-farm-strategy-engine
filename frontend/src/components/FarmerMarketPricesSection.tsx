@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   getFarmerMarketPrices,
   type FarmerMarketPricesResponse,
@@ -12,6 +12,7 @@ interface FarmerMarketPricesSectionProps {
   primaryDistrict?: string | null;
   onEditLocation?: () => void;
   refreshKey?: number;
+  onMarketLoaded?: (data: FarmerMarketPricesResponse | null, loadedUserId?: number) => void;
 }
 
 export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps> = ({
@@ -20,11 +21,15 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
   primaryDistrict,
   onEditLocation,
   refreshKey,
+  onMarketLoaded,
 }) => {
   const [marketData, setMarketData] = useState<FarmerMarketPricesResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
+
+  // Request identity tracker to prevent asynchronous stale-data race
+  const activeRequestIdRef = useRef<number>(0);
 
   // Filter form state
   const [commodityFilter, setCommodityFilter] = useState<string>('');
@@ -42,15 +47,19 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
   );
 
   const fetchPrices = useCallback(() => {
+    const requestId = ++activeRequestIdRef.current;
+
     if (!userId || userId <= 0) {
       setMarketData(null);
       setError(null);
+      onMarketLoaded?.(null, userId);
       return;
     }
 
     if (!hasLocation) {
       setMarketData(null);
       setError(null);
+      onMarketLoaded?.(null, userId);
       return;
     }
 
@@ -60,12 +69,16 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
 
     getFarmerMarketPrices(userId, activeParams)
       .then((data) => {
+        if (requestId !== activeRequestIdRef.current) return;
         setMarketData(data);
+        onMarketLoaded?.(data, userId);
         setIsLoading(false);
       })
       .catch((err: unknown) => {
+        if (requestId !== activeRequestIdRef.current) return;
         setIsLoading(false);
         setMarketData(null);
+        onMarketLoaded?.(null, userId);
         if (err instanceof ApiError) {
           setErrorStatus(err.status);
           if (err.status === 401) {
@@ -89,6 +102,9 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
 
   useEffect(() => {
     fetchPrices();
+    return () => {
+      activeRequestIdRef.current++;
+    };
   }, [fetchPrices, refreshKey]);
 
   const handleApplyFilters = (e: React.FormEvent) => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   evaluateFarmStrategy,
   type GrowingSeason,
@@ -8,6 +8,9 @@ import {
   type RiskTolerance,
 } from '../api/strategy';
 import { ApiError } from '../api/apiClient';
+import { type FarmerProfileResponse } from '../api/farmerProfile';
+import { type FarmerWeatherResponse } from '../api/weather';
+import { type FarmerMarketPricesResponse } from '../api/marketPrices';
 
 interface FarmerStrategySectionProps {
   userId: number;
@@ -17,6 +20,10 @@ interface FarmerStrategySectionProps {
   riskToleranceDefault?: RiskTolerance | null;
   primaryState?: string | null;
   primaryDistrict?: string | null;
+  // Props for PDF generation — passed from FarmerProfilePage
+  farmerProfile?: FarmerProfileResponse | null;
+  weatherResponse?: FarmerWeatherResponse | null;
+  marketPricesResponse?: FarmerMarketPricesResponse | null;
 }
 
 export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
@@ -27,6 +34,9 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
   riskToleranceDefault,
   primaryState,
   primaryDistrict,
+  farmerProfile,
+  weatherResponse,
+  marketPricesResponse,
 }) => {
   const [targetSeason, setTargetSeason] = useState<GrowingSeason>('KHARIF');
   const [planningYear, setPlanningYear] = useState<string>('2026');
@@ -44,6 +54,38 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
   // Stale detection
   const [isStale, setIsStale] = useState<boolean>(false);
   const [tierFilter, setTierFilter] = useState<'ALL' | StrategyDecisionTier>('ALL');
+
+  // Stale data protection: reset evaluation if farmer identity or operational location changes
+  useEffect(() => {
+    setResponse(null);
+    setIsStale(false);
+    setError(null);
+  }, [userId, farmerProfile?.id, primaryState, primaryDistrict]);
+
+  // PDF generation state
+  const [pdfLoading, setPdfLoading] = useState<boolean>(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const handleDownloadPdf = async () => {
+    if (!response || pdfLoading) return;
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      const { downloadFarmReportPdf } = await import('../utils/farmReportPdfGenerator');
+      downloadFarmReportPdf({
+        farmerProfile: farmerProfile ?? null,
+        strategyResponse: response,
+        weatherResponse: weatherResponse ?? null,
+        marketPricesResponse: marketPricesResponse ?? null,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'PDF generation failed. Please try again.';
+      setPdfError(`PDF Error: ${msg}`);
+      console.error('[PDF] generation error:', err);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const handleSeasonChange = (s: GrowingSeason) => {
     setTargetSeason(s);
@@ -378,6 +420,37 @@ export const FarmerStrategySection: React.FC<FarmerStrategySectionProps> = ({
       {/* Evaluation Results Section */}
       {response && (
         <div className="mt-8 space-y-6">
+          {/* PDF Download Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-xs text-slate-400">
+              Strategy evaluated successfully. Download a complete PDF report with all findings below.
+            </p>
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={pdfLoading}
+              className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold shadow-lg shadow-indigo-500/20 whitespace-nowrap shrink-0"
+              aria-label="Download Complete Farm Strategy Report as PDF"
+            >
+              {pdfLoading ? (
+                <>
+                  <span className="inline-block animate-spin">⏳</span>
+                  Generating PDF…
+                </>
+              ) : (
+                <>
+                  <span>📄</span>
+                  Download Complete Farm Strategy Report (PDF)
+                </>
+              )}
+            </button>
+          </div>
+          {pdfError && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{pdfError}</span>
+            </div>
+          )}
           {/* Summary KPI Banner */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   getFarmerWeather,
   type FarmerWeatherResponse,
@@ -10,6 +10,7 @@ interface FarmerWeatherSectionProps {
   hasLocationData: boolean;
   onEditLocation?: () => void;
   refreshKey?: number;
+  onWeatherLoaded?: (data: FarmerWeatherResponse | null, loadedUserId?: number) => void;
 }
 
 export const FarmerWeatherSection: React.FC<FarmerWeatherSectionProps> = ({
@@ -17,16 +18,23 @@ export const FarmerWeatherSection: React.FC<FarmerWeatherSectionProps> = ({
   hasLocationData,
   onEditLocation,
   refreshKey,
+  onWeatherLoaded,
 }) => {
   const [weather, setWeather] = useState<FarmerWeatherResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
 
+  // Request identity tracker to prevent asynchronous stale-data race
+  const activeRequestIdRef = useRef<number>(0);
+
   const fetchWeather = useCallback(() => {
+    const requestId = ++activeRequestIdRef.current;
+
     if (!hasLocationData || !userId || userId <= 0) {
       setWeather(null);
       setError(null);
+      onWeatherLoaded?.(null, userId);
       return;
     }
 
@@ -36,12 +44,16 @@ export const FarmerWeatherSection: React.FC<FarmerWeatherSectionProps> = ({
 
     getFarmerWeather(userId)
       .then((data) => {
+        if (requestId !== activeRequestIdRef.current) return;
         setWeather(data);
+        onWeatherLoaded?.(data, userId);
         setIsLoading(false);
       })
       .catch((err: unknown) => {
+        if (requestId !== activeRequestIdRef.current) return;
         setIsLoading(false);
         setWeather(null);
+        onWeatherLoaded?.(null, userId);
         if (err instanceof ApiError) {
           setErrorStatus(err.status);
           if (err.status === 401) {
@@ -71,6 +83,9 @@ export const FarmerWeatherSection: React.FC<FarmerWeatherSectionProps> = ({
 
   useEffect(() => {
     fetchWeather();
+    return () => {
+      activeRequestIdRef.current++;
+    };
   }, [fetchWeather, refreshKey]);
 
   // Helper for cardinal wind direction
