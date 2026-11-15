@@ -1,0 +1,15 @@
+frontend/
+ml-service/
+database/
+docs/
+backend/target/
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!*.env.example
+.git
+.gitignore
+.vscode
+.idea
