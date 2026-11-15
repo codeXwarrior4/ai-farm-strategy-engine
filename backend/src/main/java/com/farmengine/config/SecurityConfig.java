@@ -56,6 +56,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/health").permitAll()
                 // Authentication endpoints — public
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                // Public market catalog / district metadata — public
+                .requestMatchers(HttpMethod.GET, "/api/v1/market-prices/**").permitAll()
                 // Admin endpoints — require ROLE_ADMIN
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 // Profile endpoints require authentication

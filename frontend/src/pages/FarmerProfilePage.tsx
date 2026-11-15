@@ -16,7 +16,7 @@ import {
 } from '../api/farmerProfile';
 import { ApiError, getAuthToken, setAuthToken } from '../api/apiClient';
 import { type FarmerWeatherResponse } from '../api/weather';
-import { type FarmerMarketPricesResponse } from '../api/marketPrices';
+import { type FarmerMarketPricesResponse, MAHARASHTRA_DISTRICTS } from '../api/marketPrices';
 
 type FormState = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -542,7 +542,7 @@ export default function FarmerProfilePage() {
               <div className="grid sm:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="primaryState" className="form-label">
-                    State <span className="text-xs text-slate-500 font-normal">(optional)</span>
+                    State <span className="text-xs text-slate-500 font-normal">(e.g. Maharashtra)</span>
                   </label>
                   <input
                     id="primaryState"
@@ -551,7 +551,7 @@ export default function FarmerProfilePage() {
                     value={form.primaryState}
                     onChange={handleInputChange}
                     className="form-input"
-                    placeholder="e.g. Gujarat"
+                    placeholder="e.g. Maharashtra"
                   />
                   {fieldErrors.primaryState && (
                     <p className="text-xs text-red-400 mt-1">{fieldErrors.primaryState}</p>
@@ -559,18 +559,47 @@ export default function FarmerProfilePage() {
                 </div>
 
                 <div>
-                  <label htmlFor="primaryDistrict" className="form-label">
-                    District <span className="text-xs text-slate-500 font-normal">(optional)</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="primaryDistrict" className="form-label mb-0">
+                      District <span className="text-xs text-slate-500 font-normal">(select or type)</span>
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-mono">36 MH Districts</span>
+                  </div>
                   <input
                     id="primaryDistrict"
                     name="primaryDistrict"
+                    list="maharashtra-districts-datalist"
                     type="text"
                     value={form.primaryDistrict}
-                    onChange={handleInputChange}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setForm(prev => ({
+                        ...prev,
+                        primaryDistrict: val,
+                        primaryState: prev.primaryState.trim() ? prev.primaryState : 'Maharashtra',
+                      }));
+                      if (fieldErrors.primaryDistrict) {
+                        setFieldErrors(prev => {
+                          const next = { ...prev };
+                          delete next.primaryDistrict;
+                          return next;
+                        });
+                      }
+                    }}
                     className="form-input"
-                    placeholder="e.g. Anand"
+                    placeholder="Select or type (e.g. Kolhapur, Pune, Jalna...)"
+                    autoComplete="off"
                   />
+                  <datalist id="maharashtra-districts-datalist">
+                    {MAHARASHTRA_DISTRICTS.map((d) => (
+                      <option
+                        key={d.canonicalName}
+                        value={d.canonicalName}
+                      >
+                        {d.canonicalName} ({d.division} Division{d.aliases.length > 0 ? ` · ${d.aliases.join(', ')}` : ''})
+                      </option>
+                    ))}
+                  </datalist>
                   {fieldErrors.primaryDistrict && (
                     <p className="text-xs text-red-400 mt-1">{fieldErrors.primaryDistrict}</p>
                   )}

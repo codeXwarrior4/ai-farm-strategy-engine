@@ -14,6 +14,7 @@ import com.farmengine.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -22,12 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 /**
- * Service implementation for querying locally persisted market price records for a farmer's profile.
+ * Service implementation for querying locally persisted market price records for a farmer's profile or district.
+ * Supports all Maharashtra districts with alias harmonization and APMC market discovery.
  * Prioritizes official AGMARKNET API observations (OFFICIAL_API) over demonstration data (DEMO_SEEDED).
  */
 @Slf4j
@@ -75,6 +75,8 @@ public class MarketPriceServiceImpl implements MarketPriceService {
             Long userId,
             String commodity,
             LocalDate arrivalDate,
+            String market,
+            Integer page,
             Integer limit) {
 
         userRepository.findById(userId)
@@ -83,8 +85,71 @@ public class MarketPriceServiceImpl implements MarketPriceService {
         FarmerProfile profile = profileRepository.findByOwnerId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("FarmerProfile for user id " + userId + " was not found"));
 
-        String state = profile.getPrimaryState();
-        String district = profile.getPrimaryDistrict();
+        return retrievePricesInternal(
+                profile.getId(),
+                userId,
+                profile.getPrimaryState(),
+                profile.getPrimaryDistrict(),
+                commodity,
+                arrivalDate,
+                market,
+                page,
+                limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FarmerMarketPricesResponse getMarketPricesForLocation(
+            String state,
+            String district,
+            String commodity,
+            LocalDate arrivalDate,
+            String market,
+            Integer page,
+            Integer limit) {
+
+        return retrievePricesInternal(
+                null,
+                null,
+                state,
+                district,
+                commodity,
+                arrivalDate,
+                market,
+                page,
+                limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> getAvailableMarkets(String state, String district) {
+        if (state == null || state.isBlank() || district == null || district.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<String> lowercaseVariants = resolveDistrictVariants(state, district);
+        return marketRecordRepository.findDistinctMarketsByStateAndDistrictIn(state.trim(), lowercaseVariants);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> getAvailableCommodities(String state, String district) {
+        if (state == null || state.isBlank() || district == null || district.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<String> lowercaseVariants = resolveDistrictVariants(state, district);
+        return marketRecordRepository.findDistinctCommoditiesByStateAndDistrictIn(state.trim(), lowercaseVariants);
+    }
+
+    private FarmerMarketPricesResponse retrievePricesInternal(
+            Long profileId,
+            Long ownerId,
+            String state,
+            String district,
+            String commodity,
+            LocalDate arrivalDate,
+            String market,
+            Integer page,
+            Integer limit) {
 
         String liveSyncStatus;
         if (dataGovInMarketService != null && !dataGovInMarketService.isApiKeyConfigured()) {
@@ -94,15 +159,22 @@ public class MarketPriceServiceImpl implements MarketPriceService {
         }
 
         if (state == null || state.isBlank() || district == null || district.isBlank()) {
-            log.info("Farmer profile id={} has no primary state or district configured. Returning empty market prices.", profile.getId());
+            log.info("Location is empty. Returning empty market prices.");
             return FarmerMarketPricesResponse.builder()
-                    .farmerProfileId(profile.getId())
-                    .ownerId(userId)
+                    .farmerProfileId(profileId)
+                    .ownerId(ownerId)
                     .queryState(state)
                     .queryDistrict(district)
                     .queryCommodity(commodity)
+                    .queryMarket(market)
                     .recordCount(0)
                     .records(Collections.emptyList())
+                    .availableMarkets(Collections.emptyList())
+                    .availableCommodities(Collections.emptyList())
+                    .page(0)
+                    .pageSize(limit != null ? limit : 20)
+                    .totalPages(0)
+                    .totalElements(0L)
                     .freshness(MarketFreshnessMetadataDto.builder()
                             .dataAvailable(false)
                             .latestArrivalDate(null)
@@ -127,115 +199,69 @@ public class MarketPriceServiceImpl implements MarketPriceService {
 
         String trimmedState = state.trim();
         String trimmedDistrict = district.trim();
+        String canonicalDistrict = MaharashtraDistricts.isMaharashtra(trimmedState)
+                ? MaharashtraDistricts.normalizeDistrict(trimmedDistrict)
+                : trimmedDistrict;
+
+        List<String> lowercaseVariants = resolveDistrictVariants(trimmedState, trimmedDistrict);
+
         String cleanCommodity = (commodity != null && !commodity.isBlank()) ? commodity.trim() : null;
+        String cleanMarket = (market != null && !market.isBlank()) ? market.trim() : null;
 
         int effectiveLimit = (limit != null) ? Math.min(50, Math.max(1, limit)) : 20;
-        Pageable pageable = PageRequest.of(0, effectiveLimit);
+        int effectivePage = (page != null && page >= 0) ? page : 0;
+        Pageable pageable = PageRequest.of(effectivePage, effectiveLimit);
+
+        // Retrieve available APMC markets and commodities for this district
+        List<String> availableMarkets = marketRecordRepository.findDistinctMarketsByStateAndDistrictIn(trimmedState, lowercaseVariants);
+        List<String> availableCommodities = marketRecordRepository.findDistinctCommoditiesByStateAndDistrictIn(trimmedState, lowercaseVariants);
 
         // Priority 1: Check for OFFICIAL_API records
         boolean hasOfficial = (cleanCommodity != null)
-                ? marketRecordRepository.existsByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassification(
-                        trimmedState, trimmedDistrict, cleanCommodity, MarketPriceSourceClassification.OFFICIAL_API)
-                : marketRecordRepository.existsByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassification(
-                        trimmedState, trimmedDistrict, MarketPriceSourceClassification.OFFICIAL_API);
+                ? marketRecordRepository.existsByStateAndDistrictInAndCommodityAndSourceClassification(
+                        trimmedState, lowercaseVariants, cleanCommodity, MarketPriceSourceClassification.OFFICIAL_API)
+                : marketRecordRepository.existsByStateAndDistrictInAndSourceClassification(
+                        trimmedState, lowercaseVariants, MarketPriceSourceClassification.OFFICIAL_API);
 
         // Priority 2: Check for DEMO_SEEDED records if no official records are present
         boolean hasDemo = !hasOfficial && ((cleanCommodity != null)
-                ? marketRecordRepository.existsByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassification(
-                        trimmedState, trimmedDistrict, cleanCommodity, MarketPriceSourceClassification.DEMO_SEEDED)
-                : marketRecordRepository.existsByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassification(
-                        trimmedState, trimmedDistrict, MarketPriceSourceClassification.DEMO_SEEDED));
+                ? marketRecordRepository.existsByStateAndDistrictInAndCommodityAndSourceClassification(
+                        trimmedState, lowercaseVariants, cleanCommodity, MarketPriceSourceClassification.DEMO_SEEDED)
+                : marketRecordRepository.existsByStateAndDistrictInAndSourceClassification(
+                        trimmedState, lowercaseVariants, MarketPriceSourceClassification.DEMO_SEEDED));
 
-        List<MarketPriceRecord> records;
-        MarketPriceSourceClassification activeClassification;
+        MarketPriceSourceClassification activeClassification = hasOfficial
+                ? MarketPriceSourceClassification.OFFICIAL_API
+                : (hasDemo ? MarketPriceSourceClassification.DEMO_SEEDED : null);
 
-        if (hasOfficial) {
-            activeClassification = MarketPriceSourceClassification.OFFICIAL_API;
-            if (cleanCommodity != null && arrivalDate != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndArrivalDateAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, cleanCommodity, arrivalDate, activeClassification, pageable);
-            } else if (cleanCommodity != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, cleanCommodity, activeClassification, pageable);
-            } else if (arrivalDate != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndArrivalDateAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, arrivalDate, activeClassification, pageable);
-            } else {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, activeClassification, pageable);
-            }
-        } else if (hasDemo) {
-            activeClassification = MarketPriceSourceClassification.DEMO_SEEDED;
-            if (cleanCommodity != null && arrivalDate != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndArrivalDateAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, cleanCommodity, arrivalDate, activeClassification, pageable);
-            } else if (cleanCommodity != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, cleanCommodity, activeClassification, pageable);
-            } else if (arrivalDate != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndArrivalDateAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, arrivalDate, activeClassification, pageable);
-            } else {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassificationOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, activeClassification, pageable);
-            }
-        } else {
-            // Fallback: check unclassified or general records
-            activeClassification = null;
-            if (cleanCommodity != null && arrivalDate != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndArrivalDateOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, cleanCommodity, arrivalDate, pageable);
-            } else if (cleanCommodity != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, cleanCommodity, pageable);
-            } else if (arrivalDate != null) {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseAndArrivalDateOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, arrivalDate, pageable);
-            } else {
-                records = marketRecordRepository
-                        .findByStateIgnoreCaseAndDistrictIgnoreCaseOrderByArrivalDateDescMarketAscCommodityAscIdAsc(
-                                trimmedState, trimmedDistrict, pageable);
-            }
-            if (!records.isEmpty()) {
-                activeClassification = records.get(0).getSourceClassification();
-            }
-        }
+        // Execute unified search query
+        Page<MarketPriceRecord> recordsPage = marketRecordRepository.searchMarketPrices(
+                trimmedState,
+                lowercaseVariants,
+                cleanCommodity,
+                arrivalDate,
+                cleanMarket,
+                activeClassification,
+                pageable
+        );
 
-        Optional<MarketPriceRecord> latestRecordOpt;
-        if (activeClassification != null) {
-            latestRecordOpt = marketRecordRepository
-                    .findTopByStateIgnoreCaseAndDistrictIgnoreCaseAndSourceClassificationOrderByArrivalDateDesc(
-                            trimmedState, trimmedDistrict, activeClassification);
-        } else {
-            latestRecordOpt = marketRecordRepository
-                    .findTopByStateIgnoreCaseAndDistrictIgnoreCaseOrderByArrivalDateDesc(trimmedState, trimmedDistrict);
-        }
+        List<MarketPriceRecord> latestRecords = marketRecordRepository.findLatestRecordForDistrictVariants(
+                trimmedState, lowercaseVariants, activeClassification, PageRequest.of(0, 1));
+        LocalDate latestArrivalDate = latestRecords.isEmpty() ? null : latestRecords.get(0).getArrivalDate();
 
-        LocalDate latestArrivalDate = latestRecordOpt.map(MarketPriceRecord::getArrivalDate).orElse(null);
         Long daysOld = (latestArrivalDate != null) ? ChronoUnit.DAYS.between(latestArrivalDate, LocalDate.now()) : null;
         boolean isStale = (daysOld != null) && (daysOld > freshnessThresholdDays);
 
         String freshnessStatus;
         String freshnessDescription;
-        if (records.isEmpty() || latestArrivalDate == null) {
+        if (recordsPage.isEmpty() || latestArrivalDate == null) {
             freshnessStatus = "NO_DATA";
             isStale = false;
-            freshnessDescription = "No mandi wholesale price records found for " + trimmedDistrict + ", " + trimmedState + ".";
+            freshnessDescription = "No official AGMARKNET records are currently available for " + canonicalDistrict + ", " + trimmedState + ".";
         } else if (activeClassification == MarketPriceSourceClassification.DEMO_SEEDED) {
             freshnessStatus = "DEMO_DATA";
             isStale = false;
-            freshnessDescription = "Demonstration sample prices for evaluation only. Live official AGMARKNET observations have not yet been synchronized for " + trimmedDistrict + ".";
+            freshnessDescription = "Demonstration sample prices for evaluation only. Live official AGMARKNET observations have not yet been synchronized for " + canonicalDistrict + ".";
         } else if (isStale) {
             freshnessStatus = "STALE";
             freshnessDescription = "Official AGMARKNET observations are older than " + freshnessThresholdDays + " days (" + daysOld + " days old).";
@@ -244,7 +270,7 @@ public class MarketPriceServiceImpl implements MarketPriceService {
             freshnessDescription = "Fresh official AGMARKNET observations recorded on " + latestArrivalDate + " (" + daysOld + " days old).";
         }
 
-        List<MarketPriceItemDto> itemDtos = records.stream()
+        List<MarketPriceItemDto> itemDtos = recordsPage.getContent().stream()
                 .map(this::toItemDto)
                 .toList();
 
@@ -262,13 +288,20 @@ public class MarketPriceServiceImpl implements MarketPriceService {
                 .build();
 
         return FarmerMarketPricesResponse.builder()
-                .farmerProfileId(profile.getId())
-                .ownerId(userId)
+                .farmerProfileId(profileId)
+                .ownerId(ownerId)
                 .queryState(trimmedState)
-                .queryDistrict(trimmedDistrict)
+                .queryDistrict(canonicalDistrict)
                 .queryCommodity(cleanCommodity)
+                .queryMarket(cleanMarket)
                 .recordCount(itemDtos.size())
                 .records(itemDtos)
+                .availableMarkets(availableMarkets)
+                .availableCommodities(availableCommodities)
+                .page(recordsPage.getNumber())
+                .pageSize(recordsPage.getSize())
+                .totalPages(recordsPage.getTotalPages())
+                .totalElements(recordsPage.getTotalElements())
                 .freshness(MarketFreshnessMetadataDto.builder()
                         .dataAvailable(dataAvailable)
                         .latestArrivalDate(latestArrivalDate)
@@ -283,6 +316,16 @@ public class MarketPriceServiceImpl implements MarketPriceService {
                 .attribution(attribution)
                 .retrievedAt(LocalDateTime.now())
                 .build();
+    }
+
+    private List<String> resolveDistrictVariants(String state, String district) {
+        if (state != null && MaharashtraDistricts.isMaharashtra(state)) {
+            return MaharashtraDistricts.getQueryVariants(district).stream()
+                    .map(s -> s.trim().toLowerCase(Locale.ROOT))
+                    .distinct()
+                    .toList();
+        }
+        return List.of(district.trim().toLowerCase(Locale.ROOT));
     }
 
     private MarketPriceItemDto toItemDto(MarketPriceRecord record) {

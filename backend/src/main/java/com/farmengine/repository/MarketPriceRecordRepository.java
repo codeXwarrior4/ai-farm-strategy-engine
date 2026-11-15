@@ -120,4 +120,71 @@ public interface MarketPriceRecordRepository extends JpaRepository<MarketPriceRe
      */
     Optional<MarketPriceRecord> findTopByStateIgnoreCaseAndDistrictIgnoreCaseAndCommodityIgnoreCaseAndSourceClassificationOrderByArrivalDateDesc(
             String state, String district, String commodity, MarketPriceSourceClassification sourceClassification);
+
+    /**
+     * Finds distinct APMC markets for a given state and district variants.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT m.market FROM MarketPriceRecord m WHERE LOWER(m.state) = LOWER(:state) AND LOWER(m.district) IN (:districts) ORDER BY m.market ASC")
+    List<String> findDistinctMarketsByStateAndDistrictIn(
+            @org.springframework.data.repository.query.Param("state") String state,
+            @org.springframework.data.repository.query.Param("districts") java.util.Collection<String> districts);
+
+    /**
+     * Finds distinct commodities for a given state and district variants.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT m.commodity FROM MarketPriceRecord m WHERE LOWER(m.state) = LOWER(:state) AND LOWER(m.district) IN (:districts) ORDER BY m.commodity ASC")
+    List<String> findDistinctCommoditiesByStateAndDistrictIn(
+            @org.springframework.data.repository.query.Param("state") String state,
+            @org.springframework.data.repository.query.Param("districts") java.util.Collection<String> districts);
+
+    /**
+     * Checks if any records exist with the given source classification for a state and district variants.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT CASE WHEN COUNT(m) > 0 THEN TRUE ELSE FALSE END FROM MarketPriceRecord m WHERE LOWER(m.state) = LOWER(:state) AND LOWER(m.district) IN (:districts) AND m.sourceClassification = :classification")
+    boolean existsByStateAndDistrictInAndSourceClassification(
+            @org.springframework.data.repository.query.Param("state") String state,
+            @org.springframework.data.repository.query.Param("districts") java.util.Collection<String> districts,
+            @org.springframework.data.repository.query.Param("classification") MarketPriceSourceClassification classification);
+
+    /**
+     * Checks if any records exist with the given source classification for a state, district variants, and commodity.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT CASE WHEN COUNT(m) > 0 THEN TRUE ELSE FALSE END FROM MarketPriceRecord m WHERE LOWER(m.state) = LOWER(:state) AND LOWER(m.district) IN (:districts) AND LOWER(m.commodity) = LOWER(:commodity) AND m.sourceClassification = :classification")
+    boolean existsByStateAndDistrictInAndCommodityAndSourceClassification(
+            @org.springframework.data.repository.query.Param("state") String state,
+            @org.springframework.data.repository.query.Param("districts") java.util.Collection<String> districts,
+            @org.springframework.data.repository.query.Param("commodity") String commodity,
+            @org.springframework.data.repository.query.Param("classification") MarketPriceSourceClassification classification);
+
+    /**
+     * Retrieves the most recent record for a state and district variants with optional classification.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT m FROM MarketPriceRecord m WHERE LOWER(m.state) = LOWER(:state) AND LOWER(m.district) IN (:districts) AND (:classification IS NULL OR m.sourceClassification = :classification) ORDER BY m.arrivalDate DESC, m.id DESC")
+    List<MarketPriceRecord> findLatestRecordForDistrictVariants(
+            @org.springframework.data.repository.query.Param("state") String state,
+            @org.springframework.data.repository.query.Param("districts") java.util.Collection<String> districts,
+            @org.springframework.data.repository.query.Param("classification") MarketPriceSourceClassification classification,
+            org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Bounded, filterable, multi-parameter search across district variants with provenance isolation.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT m FROM MarketPriceRecord m
+        WHERE LOWER(m.state) = LOWER(:state)
+          AND LOWER(m.district) IN (:districts)
+          AND (:commodity IS NULL OR LOWER(m.commodity) = LOWER(:commodity))
+          AND (:arrivalDate IS NULL OR m.arrivalDate = :arrivalDate)
+          AND (:market IS NULL OR LOWER(m.market) = LOWER(:market))
+          AND (:classification IS NULL OR m.sourceClassification = :classification)
+        ORDER BY m.arrivalDate DESC, m.market ASC, m.commodity ASC, m.id ASC
+    """)
+    org.springframework.data.domain.Page<MarketPriceRecord> searchMarketPrices(
+            @org.springframework.data.repository.query.Param("state") String state,
+            @org.springframework.data.repository.query.Param("districts") java.util.Collection<String> districts,
+            @org.springframework.data.repository.query.Param("commodity") String commodity,
+            @org.springframework.data.repository.query.Param("arrivalDate") LocalDate arrivalDate,
+            @org.springframework.data.repository.query.Param("market") String market,
+            @org.springframework.data.repository.query.Param("classification") MarketPriceSourceClassification classification,
+            org.springframework.data.domain.Pageable pageable);
 }

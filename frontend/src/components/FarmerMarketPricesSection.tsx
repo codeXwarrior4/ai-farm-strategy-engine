@@ -33,11 +33,14 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
 
   // Filter form state
   const [commodityFilter, setCommodityFilter] = useState<string>('');
+  const [marketFilter, setMarketFilter] = useState<string>('');
   const [arrivalDateFilter, setArrivalDateFilter] = useState<string>('');
   const [limitFilter, setLimitFilter] = useState<number>(20);
+  const [currentPage, setCurrentPage] = useState<number>(0);
 
   // Active query parameters applied
   const [activeParams, setActiveParams] = useState<MarketPriceQueryParams>({
+    page: 0,
     limit: 20,
   });
 
@@ -98,35 +101,59 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
           setError('An unexpected error occurred while fetching market prices.');
         }
       });
-  }, [userId, hasLocation, activeParams]);
+  }, [userId, hasLocation, activeParams, onMarketLoaded]);
+
+  // When location changes or refreshKey increments, reset page and re-fetch
+  useEffect(() => {
+    setCurrentPage(0);
+    setActiveParams(prev => ({
+      ...prev,
+      page: 0,
+    }));
+  }, [primaryState, primaryDistrict, refreshKey]);
 
   useEffect(() => {
     fetchPrices();
     return () => {
       activeRequestIdRef.current++;
     };
-  }, [fetchPrices, refreshKey]);
+  }, [fetchPrices]);
 
   const handleApplyFilters = (e: React.FormEvent) => {
     e.preventDefault();
+    setCurrentPage(0);
     setActiveParams({
       commodity: commodityFilter.trim() || undefined,
+      market: marketFilter.trim() || undefined,
       arrivalDate: arrivalDateFilter.trim() || undefined,
+      page: 0,
       limit: limitFilter,
     });
   };
 
   const handleClearFilters = () => {
     setCommodityFilter('');
+    setMarketFilter('');
     setArrivalDateFilter('');
     setLimitFilter(20);
-    setActiveParams({ limit: 20 });
+    setCurrentPage(0);
+    setActiveParams({ page: 0, limit: 20 });
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    setActiveParams(prev => ({
+      ...prev,
+      page: newPage,
+    }));
   };
 
   const hasActiveFilters = Boolean(
     (activeParams.commodity && activeParams.commodity.length > 0) ||
+    (activeParams.market && activeParams.market.length > 0) ||
     (activeParams.arrivalDate && activeParams.arrivalDate.length > 0) ||
-    (activeParams.limit && activeParams.limit !== 20)
+    (activeParams.limit && activeParams.limit !== 20) ||
+    (activeParams.page && activeParams.page > 0)
   );
 
   const formatDateTime = (isoString?: string): string => {
@@ -155,6 +182,10 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
       return dateStr;
     }
   };
+
+  const totalPages = marketData?.totalPages ?? 1;
+  const pageNum = marketData?.page ?? currentPage;
+  const totalRecords = marketData?.totalElements ?? marketData?.recordCount ?? 0;
 
   return (
     <section
@@ -224,7 +255,7 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
               {marketData.freshness.freshnessStatus === 'NO_DATA' && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/20 text-slate-300 border border-slate-500/30">
                   <span>ℹ️</span>
-                  NO RECENT DATA
+                  NO OFFICIAL DATA AVAILABLE
                 </span>
               )}
 
@@ -285,8 +316,8 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                 {errorStatus === 401 || errorStatus === 403
                   ? 'Authorization Required'
                   : errorStatus === 404
-                  ? 'Profile Not Found'
-                  : 'Market Data Retrieval Failed'}
+                    ? 'Profile Not Found'
+                    : 'Market Data Retrieval Failed'}
               </h3>
               <p className="text-xs text-red-200/90 leading-relaxed mb-3">{error}</p>
               <button
@@ -304,10 +335,41 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
       {/* CONTROLS & CONTENT (When location is available) */}
       {hasLocation && (
         <div className="mt-5 space-y-5">
+          {/* AVAILABLE APMC MANDIS IN DISTRICT */}
+          {marketData?.availableMarkets && marketData.availableMarkets.length > 0 && (
+            <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/5 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                <span>🏛️</span> APMC Mandis in {primaryDistrict}:
+              </span>
+              {marketData.availableMarkets.map((mkt) => (
+                <button
+                  key={mkt}
+                  type="button"
+                  onClick={() => {
+                    const next = marketFilter === mkt ? '' : mkt;
+                    setMarketFilter(next);
+                    setCurrentPage(0);
+                    setActiveParams(prev => ({
+                      ...prev,
+                      market: next || undefined,
+                      page: 0,
+                    }));
+                  }}
+                  className={`text-xs px-2.5 py-0.5 rounded-full border transition-all ${marketFilter === mkt
+                    ? 'bg-indigo-600 text-white border-indigo-500 font-semibold'
+                    : 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
+                    }`}
+                >
+                  {mkt}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* FILTER FORM */}
           <form
             onSubmit={handleApplyFilters}
-            className="p-4 rounded-xl bg-white/5 border border-white/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end"
+            className="p-4 rounded-xl bg-white/5 border border-white/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
           >
             <div>
               <label htmlFor="commodity-filter" className="block text-xs font-medium text-slate-300 mb-1">
@@ -318,7 +380,21 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                 type="text"
                 value={commodityFilter}
                 onChange={(e) => setCommodityFilter(e.target.value)}
-                placeholder="e.g. Wheat, Cotton..."
+                placeholder="e.g. Wheat, Cotton, Soyabean..."
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-900/60 border border-white/10 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="market-filter" className="block text-xs font-medium text-slate-300 mb-1">
+                APMC Mandi Yard
+              </label>
+              <input
+                id="market-filter"
+                type="text"
+                value={marketFilter}
+                onChange={(e) => setMarketFilter(e.target.value)}
+                placeholder="e.g. Kolhapur, Pune..."
                 className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-900/60 border border-white/10 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-400"
               />
             </div>
@@ -407,7 +483,7 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                   </h4>
                   <p className="text-xs text-purple-200/90 leading-relaxed">
                     The rates shown below are seeded demonstration sample records for development and UI preview.
-                    Live official observations from the government data.gov.in AGMARKNET feed will replace these records once an administrator ingests live data with a configured API key.
+                    Live official observations from the government data.gov.in AGMARKNET feed will replace these records once synchronized by an administrator.
                   </p>
                 </div>
               </div>
@@ -421,12 +497,12 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                 📦
               </span>
               <h3 className="text-sm font-semibold text-slate-200 mb-1">
-                No Mandi Records Found
+                No Official AGMARKNET Records Available
               </h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
                 {hasActiveFilters
-                  ? `No price records match your current filter criteria for ${primaryDistrict}, ${primaryState}. Try modifying your commodity or arrival date filters.`
-                  : `No price records are currently stored for ${primaryDistrict}, ${primaryState}. The local dataset may not have been populated yet from the official data.gov.in AGMARKNET feed.`}
+                  ? `No price records match your current filter criteria for ${primaryDistrict}, ${primaryState}. Try modifying your commodity, APMC mandi, or arrival date filters.`
+                  : `No official AGMARKNET records are currently available for this district or selected date.`}
               </p>
               {hasActiveFilters && (
                 <button
@@ -443,19 +519,32 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
           {/* STATE 4: SUCCESS WITH RECORDS */}
           {!isLoading && marketData && marketData.records.length > 0 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-400 px-1 gap-2">
                 <span>
-                  Showing <span className="font-medium text-slate-200">{marketData.records.length}</span> of{' '}
-                  <span className="font-medium text-slate-200">{marketData.recordCount}</span> recorded arrivals
+                  Showing{' '}
+                  <span className="font-medium text-slate-200">{marketData.records.length}</span> of{' '}
+                  <span className="font-medium text-slate-200">{totalRecords}</span> recorded arrivals
+                  {totalPages > 1 && (
+                    <span className="ml-1 text-slate-500">
+                      (Page {pageNum + 1} of {totalPages})
+                    </span>
+                  )}
                 </span>
-                {marketData.queryCommodity && (
-                  <span className="bg-indigo-500/10 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/20 font-mono text-[11px]">
-                    Commodity: {marketData.queryCommodity}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {marketData.queryCommodity && (
+                    <span className="bg-indigo-500/10 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/20 font-mono text-[11px]">
+                      Commodity: {marketData.queryCommodity}
+                    </span>
+                  )}
+                  {marketData.queryMarket && (
+                    <span className="bg-indigo-500/10 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/20 font-mono text-[11px]">
+                      Mandi: {marketData.queryMarket}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* RECORDS GRID / TABLE */}
+              {/* RECORDS GRID */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {marketData.records.map((item) => (
                   <div
@@ -481,11 +570,10 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                             {formatDate(item.arrivalDate)}
                           </span>
                           <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                              item.sourceClassification === 'OFFICIAL_API'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                            }`}
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${item.sourceClassification === 'OFFICIAL_API'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              }`}
                           >
                             {item.sourceClassification === 'OFFICIAL_API' ? 'Official AGMARKNET' : 'Demo Data'}
                           </span>
@@ -542,6 +630,31 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
                   </div>
                 ))}
               </div>
+
+              {/* PAGINATION CONTROLS */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-white/10 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(Math.max(0, pageNum - 1))}
+                    disabled={pageNum === 0 || isLoading}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 transition-colors"
+                  >
+                    ← Previous Page
+                  </button>
+                  <span className="text-slate-400 font-mono text-[11px]">
+                    Page {pageNum + 1} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(Math.min(totalPages - 1, pageNum + 1))}
+                    disabled={pageNum >= totalPages - 1 || isLoading}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 transition-colors"
+                  >
+                    Next Page →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

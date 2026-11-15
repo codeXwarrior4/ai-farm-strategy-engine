@@ -125,11 +125,14 @@ public class FarmerProfileController {
             @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(required = false) String commodity,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate arrivalDate,
+            @RequestParam(required = false) String market,
+            @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "20") Integer limit) {
 
         validateOwnership(principal, userId);
         validateLimit(limit);
-        FarmerMarketPricesResponse response = marketPriceService.getMarketPricesForFarmer(userId, commodity, arrivalDate, limit);
+        validatePage(page);
+        FarmerMarketPricesResponse response = marketPriceService.getMarketPricesForFarmer(userId, commodity, arrivalDate, market, page, limit);
         return ResponseEntity.ok(response);
     }
 
@@ -151,6 +154,12 @@ public class FarmerProfileController {
     private void validateLimit(Integer limit) {
         if (limit == null || limit < 1 || limit > 50) {
             throw new ValidationException("limit", "Query limit must be between 1 and 50");
+        }
+    }
+
+    private void validatePage(Integer page) {
+        if (page == null || page < 0) {
+            throw new ValidationException("page", "Page index must be non-negative");
         }
     }
 

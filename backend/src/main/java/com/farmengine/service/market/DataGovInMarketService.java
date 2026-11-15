@@ -16,9 +16,7 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -180,5 +178,66 @@ public class DataGovInMarketService {
         }
 
         return combined;
+    }
+
+    private static final java.time.format.DateTimeFormatter DD_MM_YYYY = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    /**
+     * Fetches market price records for a specific district, resolving Maharashtra aliases automatically.
+     */
+    public List<DataGovInRecordDto> fetchDistrictRecords(
+            String state,
+            String district,
+            Integer maxPagesOverride,
+            String commodity,
+            java.time.LocalDate arrivalDate) {
+
+        String queryState = (state != null && !state.isBlank()) ? state.trim() : "Maharashtra";
+        List<String> districtVariants = MaharashtraDistricts.isMaharashtra(queryState)
+                ? MaharashtraDistricts.getQueryVariants(district)
+                : (district != null && !district.isBlank() ? List.of(district.trim()) : Collections.emptyList());
+
+        List<DataGovInRecordDto> allFetched = new ArrayList<>();
+        Set<String> seenKeys = new HashSet<>();
+
+        // Try the primary API query name first, and then aliases if no records found
+        for (String queryDistrict : districtVariants) {
+            Map<String, String> filters = new LinkedHashMap<>();
+            filters.put("state", queryState);
+            filters.put("district", queryDistrict);
+            if (commodity != null && !commodity.isBlank()) {
+                filters.put("commodity", commodity.trim());
+            }
+            if (arrivalDate != null) {
+                filters.put("arrival_date", arrivalDate.format(DD_MM_YYYY));
+            }
+
+            List<DataGovInRecordDto> records = fetchAllRecords(filters, maxPagesOverride);
+            if (records != null && !records.isEmpty()) {
+                for (DataGovInRecordDto rec : records) {
+                    String key = rec.getState() + "|" + rec.getDistrict() + "|" + rec.getMarket() + "|"
+                            + rec.getCommodity() + "|" + rec.getArrivalDate() + "|" + rec.getModalPrice();
+                    if (seenKeys.add(key)) {
+                        allFetched.add(rec);
+                    }
+                }
+                // If primary query variant yielded records, stop querying redundant aliases
+                break;
+            }
+        }
+
+        return allFetched;
+    }
+
+    /**
+     * Fetches all official records for Maharashtra statewide, bounded by maxPagesOverride.
+     */
+    public List<DataGovInRecordDto> fetchAllMaharashtraRecords(Integer maxPagesOverride, String commodity) {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("state", "Maharashtra");
+        if (commodity != null && !commodity.isBlank()) {
+            filters.put("commodity", commodity.trim());
+        }
+        return fetchAllRecords(filters, maxPagesOverride);
     }
 }

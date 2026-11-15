@@ -1,7 +1,7 @@
 # API Contract Specification
 
-**Platform:** AI Farm Strategy & Decision Engine  
-**Version:** Phase 1.1 (Stabilization & Security Hardening)  
+**Platform:** AI Farm Strategy & Decision Engine
+**Version:** Phase 1.1 (Stabilization & Security Hardening)
 **Base URLs:**
 - **Backend (Spring Boot):** `http://localhost:8080`
 - **ML Service (FastAPI):** `http://localhost:8000`
@@ -53,7 +53,7 @@ The platform uses stateless JSON Web Token (JWT) authentication:
 #### `POST /api/v1/auth/register`
 Creates a new user account with BCrypt password hashing.
 
-**Access:** Public  
+**Access:** Public
 **Request Body:**
 ```json
 {
@@ -91,7 +91,7 @@ Creates a new user account with BCrypt password hashing.
 #### `POST /api/v1/auth/login`
 Authenticates user with username or email and returns a signed JWT.
 
-**Access:** Public  
+**Access:** Public
 **Request Body:**
 ```json
 {
@@ -123,7 +123,7 @@ Authenticates user with username or email and returns a signed JWT.
 #### `GET /api/v1/health`
 Checks backend operational status and database connectivity.
 
-**Access:** Public  
+**Access:** Public
 **Response (200 OK):**
 ```json
 {
@@ -170,8 +170,8 @@ The Phase 1 data model focuses strictly on core identity, parcel scale, location
 #### `POST /api/v1/users/{userId}/farmer-profile`
 Creates a farmer profile linked to the specified user.
 
-**Access:** Authenticated (Caller must be `userId`)  
-**Headers:** `Authorization: Bearer <token>`  
+**Access:** Authenticated (Caller must be `userId`)
+**Headers:** `Authorization: Bearer <token>`
 **Request Body:**
 ```json
 {
@@ -217,8 +217,8 @@ Creates a farmer profile linked to the specified user.
 #### `GET /api/v1/users/{userId}/farmer-profile`
 Retrieves the farmer profile for the specified user.
 
-**Access:** Authenticated (Caller must be `userId`)  
-**Headers:** `Authorization: Bearer <token>`  
+**Access:** Authenticated (Caller must be `userId`)
+**Headers:** `Authorization: Bearer <token>`
 **Response (200 OK):** Response body matches the profile representation shown above.
 
 **Error Responses:**
@@ -232,8 +232,8 @@ Retrieves the farmer profile for the specified user.
 #### `PUT /api/v1/users/{userId}/farmer-profile`
 Updates the existing farmer profile for the specified user.
 
-**Access:** Authenticated (Caller must be `userId`)  
-**Headers:** `Authorization: Bearer <token>`  
+**Access:** Authenticated (Caller must be `userId`)
+**Headers:** `Authorization: Bearer <token>`
 **Request Body:**
 ```json
 {
@@ -284,7 +284,7 @@ Updates the existing farmer profile for the specified user.
 #### `GET /health`
 Checks ML microservice liveness. Supports Cross-Origin Resource Sharing (CORS) for configured origins (including `http://localhost:5173` and `http://localhost:4173`).
 
-**Access:** Public  
+**Access:** Public
 **Response (200 OK):**
 ```json
 {
@@ -309,8 +309,8 @@ Checks ML microservice liveness. Supports Cross-Origin Resource Sharing (CORS) f
 #### `GET /api/v1/users/{userId}/farmer-profile/weather`
 Retrieves current meteorological observations and a 7-day forecast for the farmer's profile location using the Open-Meteo API.
 
-**Access:** Authenticated (Caller must be `userId`)  
-**Headers:** `Authorization: Bearer <token>`  
+**Access:** Authenticated (Caller must be `userId`)
+**Headers:** `Authorization: Bearer <token>`
 
 #### Location Resolution Priority
 The backend resolves the geographic coordinates using the following deterministic hierarchy:
@@ -396,15 +396,18 @@ app:
 
 ### Retrieve Farmer Mandi Market Prices
 #### `GET /api/v1/users/{userId}/farmer-profile/market-prices`
-Retrieves locally persisted mandi market price observations for the authenticated farmer's configured primary state and district (`primaryState` and `primaryDistrict`).
+Retrieves locally persisted mandi market price observations for the authenticated farmer's configured primary state and district (`primaryState` and `primaryDistrict`). Fully supports all 36 Maharashtra districts with alias resolution (e.g. `Ahilyanagar`/`Ahmednagar`, `Chattrapati Sambhajinagar`/`Aurangabad`, `Dharashiv`/`Osmanabad`).
 
-**Access:** Authenticated (`ROLE_FARMER` or `ROLE_ADMIN`), strictly enforcing user ownership (`principal.id == {userId}`).  
+**Access:** Authenticated (`ROLE_FARMER` or `ROLE_ADMIN`), strictly enforcing user ownership (`principal.id == {userId}`).
 **Query Parameters:**
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
+| `market` | string | No | `null` | Optional case-insensitive APMC market yard filter (e.g. `Pune APMC`, `Lasalgaon`). |
 | `commodity` | string | No | `null` | Optional case-insensitive filter (e.g. `wheat`). Exact name match; does not normalize or merge distinct commodities. Stored source commodity name is preserved in the response. |
 | `arrivalDate` | string (ISO-8601 date `YYYY-MM-DD`) | No | `null` | Optional exact arrival date filter (e.g. `2026-10-25`). Malformed dates return `400 Bad Request`. |
-| `limit` | integer | No | `20` | Bounded pagination limit. Allowed range: `1` to `50`. Values `< 1` or `> 50` return `400 Bad Request`. |
+| `page` | integer | No | `0` | Zero-based page index for bounded pagination. Negative values return `400 Bad Request`. |
+| `pageSize` | integer | No | `20` | Page size for bounded pagination. Range: `1` to `50`. Values `< 1` or `> 50` return `400 Bad Request`. |
+| `limit` | integer | No | `20` | Backward-compatible alias for `pageSize`. Allowed range: `1` to `50`. |
 
 **Sorting & Determinism:**
 Results are ordered deterministically by:
@@ -418,34 +421,43 @@ Results are ordered deterministically by:
 {
   "farmerProfileId": 1,
   "ownerId": 1,
-  "queryState": "Punjab",
-  "queryDistrict": "Ludhiana",
-  "queryCommodity": "wheat",
-  "recordCount": 1,
+  "queryState": "Maharashtra",
+  "queryDistrict": "Kolhapur",
+  "queryMarket": null,
+  "queryCommodity": null,
+  "page": 0,
+  "pageSize": 20,
+  "totalPages": 1,
+  "totalElements": 6,
+  "recordCount": 6,
+  "availableMarkets": ["Kolhapur", "Kolhapur(Laxmipuri)"],
+  "availableCommodities": ["Apple", "Coriander", "Ginger(Green)", "Potato", "Tomato"],
   "records": [
     {
       "id": 101,
-      "market": "Ludhiana Mandi",
-      "commodity": "Wheat",
-      "variety": "PBW-343",
+      "market": "Kolhapur",
+      "commodity": "Potato",
+      "variety": "Local",
       "grade": "FAQ",
-      "arrivalDate": "2026-10-25",
-      "minPrice": 2250.00,
-      "maxPrice": 2350.00,
-      "modalPrice": 2300.00,
+      "arrivalDate": "2026-11-15",
+      "minPrice": 1800.00,
+      "maxPrice": 2400.00,
+      "modalPrice": 2100.00,
       "currency": "INR",
       "priceUnit": "Rs/Quintal",
-      "retrievalTimestamp": "2026-10-25T14:00:00",
+      "sourceClassification": "OFFICIAL_API",
+      "retrievalTimestamp": "2026-11-15T10:00:00",
       "sourceProvider": "data.gov.in"
     }
   ],
   "freshness": {
     "dataAvailable": true,
-    "latestArrivalDate": "2026-10-25",
+    "latestArrivalDate": "2026-11-15",
     "daysOld": 0,
     "isStale": false,
     "freshnessThresholdDays": 7,
-    "freshnessStatus": "FRESH"
+    "freshnessStatus": "FRESH",
+    "sourceClassification": "OFFICIAL_API"
   },
   "attribution": {
     "providerName": "data.gov.in",
@@ -454,7 +466,104 @@ Results are ordered deterministically by:
     "licenseUrl": "https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf",
     "disclaimer": "Mandi modal prices represent wholesale market auction rates and do not guarantee the net price received by an individual farmer. Transport, handling, grading, and local market deductions may apply."
   },
-  "retrievedAt": "2026-10-25T14:30:00"
+  "retrievedAt": "2026-11-15T10:30:00"
+}
+```
+
+---
+
+### Maharashtra District Catalog (Public)
+#### `GET /api/v1/market-prices/districts/maharashtra`
+Returns the authoritative catalog of all 36 Maharashtra districts grouped with administrative division metadata and official API aliases.
+
+**Access:** Public (no authentication required).
+**Response (200 OK):**
+```json
+[
+  {
+    "canonicalName": "Ahmednagar",
+    "primaryApiName": "Ahilyanagar",
+    "division": "Nashik",
+    "aliases": ["Ahilyanagar", "Ahmednagar", "Ahmadnagar"]
+  },
+  {
+    "canonicalName": "Kolhapur",
+    "primaryApiName": "Kolhapur",
+    "division": "Pune",
+    "aliases": ["Kolhapur"]
+  },
+  {
+    "canonicalName": "Pune",
+    "primaryApiName": "Pune",
+    "division": "Pune",
+    "aliases": ["Pune", "Poona"]
+  }
+]
+```
+
+---
+
+### Admin Market Price Ingestion Endpoints (ROLE_ADMIN)
+
+#### 1. Ingest Single District
+#### `POST /api/v1/admin/market-prices/ingest/district`
+Fetches and persists official AGMARKNET observations for a specific district. Automatically resolves official gazetted name aliases.
+
+**Access:** Authenticated (`ROLE_ADMIN`).
+**Request Body:**
+```json
+{
+  "state": "Maharashtra",
+  "district": "Kolhapur",
+  "arrivalDate": "2026-11-15",
+  "maxPages": 5
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "district": "Kolhapur",
+  "normalizedDistrict": "Kolhapur",
+  "totalFetched": 6,
+  "savedCount": 6,
+  "skippedCount": 0,
+  "errorCount": 0,
+  "status": "SUCCESS",
+  "message": "Successfully ingested 6 records for Kolhapur",
+  "syncedAt": "2026-11-15T10:30:00"
+}
+```
+
+#### 2. Ingest Statewide Maharashtra
+#### `POST /api/v1/admin/market-prices/ingest/maharashtra`
+Orchestrates statewide ingestion across all 36 recognized Maharashtra districts with **district-level fault isolation**. If any individual district encounters an API timeout, error, or rate limit, processing continues safely for all remaining districts.
+
+**Access:** Authenticated (`ROLE_ADMIN`).
+**Request Body:**
+```json
+{
+  "arrivalDate": null,
+  "maxPagesPerDistrict": 3
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "state": "Maharashtra",
+  "totalDistrictsEvaluated": 36,
+  "successfulDistricts": ["Ahilyanagar", "Buldhana", "Chattrapati Sambhajinagar", "Gadchiroli", "Jalgaon", "Kolhapur", "Nagpur", "Pune", "Raigad", "Satara", "Solapur"],
+  "emptyDistricts": ["Amravati", "Beed", "Bhandara", "Chandrapur", "Dhule", "Gondia", "Hingoli", "Jalna", "Latur", "Mumbai City", "Mumbai Suburban", "Nanded", "Nandurbar", "Nashik", "Dharashiv", "Palghar", "Parbhani", "Ratnagiri", "Sangli", "Sindhudurg", "Thane", "Wardha", "Washim", "Yavatmal"],
+  "failedDistricts": [],
+  "totalFetched": 257,
+  "totalSaved": 257,
+  "totalSkipped": 0,
+  "totalErrors": 0,
+  "startedAt": "2026-11-15T10:30:00",
+  "completedAt": "2026-11-15T10:31:15",
+  "durationSeconds": 75,
+  "districtSummaries": [ ... ]
 }
 ```
 

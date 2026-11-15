@@ -1,7 +1,6 @@
 package com.farmengine.controller;
 
-import com.farmengine.dto.market.IngestionResult;
-import com.farmengine.dto.market.MarketPriceIngestionRequest;
+import com.farmengine.dto.market.*;
 import com.farmengine.service.market.MarketPriceIngestionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -55,5 +54,50 @@ public class AdminMarketPriceController {
         }
 
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Trigger statewide market price ingestion across all 36 Maharashtra districts.
+     * Processes districts independently with fault isolation and rate limiting.
+     */
+    @PostMapping("/ingest/maharashtra")
+    public ResponseEntity<StatewideIngestionReport> triggerMaharashtraStatewide(
+            @Valid @RequestBody(required = false) StatewideIngestionRequest request) {
+
+        StatewideIngestionRequest effective = (request != null)
+                ? request
+                : StatewideIngestionRequest.builder().build();
+
+        log.info("Admin statewide Maharashtra ingestion triggered: maxPagesPerDistrict={}, delayMs={}, commodity={}",
+                effective.getMaxPagesPerDistrict(), effective.getDelayMs(), effective.getCommodity());
+
+        StatewideIngestionReport report = ingestionService.ingestMaharashtraStatewide(
+                effective.getMaxPagesPerDistrict(),
+                effective.getDelayMs(),
+                effective.getCommodity()
+        );
+
+        return ResponseEntity.ok(report);
+    }
+
+    /**
+     * Trigger ingestion for a specific district with alias resolution and detailed summary.
+     */
+    @PostMapping("/ingest/district")
+    public ResponseEntity<DistrictIngestionSummaryDto> triggerDistrictIngestion(
+            @Valid @RequestBody DistrictIngestionRequest request) {
+
+        log.info("Admin district market price ingestion triggered: state={}, district={}, commodity={}, maxPages={}",
+                request.getState(), request.getDistrict(), request.getCommodity(), request.getMaxPages());
+
+        DistrictIngestionSummaryDto summary = ingestionService.ingestDistrict(
+                request.getState(),
+                request.getDistrict(),
+                request.getMaxPages(),
+                request.getCommodity(),
+                null
+        );
+
+        return ResponseEntity.ok(summary);
     }
 }

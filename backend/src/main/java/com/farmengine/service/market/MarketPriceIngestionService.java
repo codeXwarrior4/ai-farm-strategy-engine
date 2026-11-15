@@ -1,9 +1,14 @@
 package com.farmengine.service.market;
 
+import com.farmengine.dto.market.DistrictIngestionSummaryDto;
 import com.farmengine.dto.market.IngestionResult;
+import com.farmengine.dto.market.StatewideIngestionReport;
 import com.farmengine.dto.market.datagovin.DataGovInRecordDto;
 import com.farmengine.entity.MarketPriceRecord;
 import com.farmengine.entity.MarketPriceSourceClassification;
+import com.farmengine.exception.MarketProviderException;
+import com.farmengine.exception.MarketRateLimitException;
+import com.farmengine.exception.MarketTimeoutException;
 import com.farmengine.repository.MarketPriceRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,9 +20,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Service responsible for validating, deduplicating, and persisting
@@ -174,10 +178,16 @@ public class MarketPriceIngestionService {
             String variety = cleanOptionalField(raw.getVariety());
             String grade = cleanOptionalField(raw.getGrade());
 
+            String effectiveState = raw.getState().trim();
+            String effectiveDistrict = raw.getDistrict().trim();
+            if (MaharashtraDistricts.isMaharashtra(effectiveState)) {
+                effectiveDistrict = MaharashtraDistricts.normalizeDistrict(effectiveDistrict);
+            }
+
             // Compute deterministic deduplication key including provenance
             String dedupKey = MarketPriceRecord.calculateDeduplicationKey(
-                    raw.getState(),
-                    raw.getDistrict(),
+                    effectiveState,
+                    effectiveDistrict,
                     raw.getMarket(),
                     raw.getCommodity(),
                     variety,
@@ -193,8 +203,8 @@ public class MarketPriceIngestionService {
             }
 
             MarketPriceRecord entity = MarketPriceRecord.builder()
-                    .state(raw.getState().trim())
-                    .district(raw.getDistrict().trim())
+                    .state(effectiveState)
+                    .district(effectiveDistrict)
                     .market(raw.getMarket().trim())
                     .commodity(raw.getCommodity().trim())
                     .variety(variety)
@@ -234,6 +244,214 @@ public class MarketPriceIngestionService {
                 result.getTotalFetched(), inserted, skipped, rejected, latestArrivalDate);
 
         return result;
+    }
+
+    /**
+     * Ingests records for a single district with alias resolution and detailed summary reporting.
+     */
+    public DistrictIngestionSummaryDto ingestDistrict(
+            String state,
+            String district,
+            Integer maxPages,
+            String commodity,
+            LocalDate arrivalDate) {
+
+        String effectiveState = (state != null && !state.isBlank()) ? state.trim() : "Maharashtra";
+        String canonicalName = MaharashtraDistricts.isMaharashtra(effectiveState)
+                ? MaharashtraDistricts.normalizeDistrict(district)
+                : (district != null ? district.trim() : "");
+
+        try {
+            List<DataGovInRecordDto> records = dataGovInMarketService.fetchDistrictRecords(
+                    effectiveState, district, maxPages, commodity, arrivalDate);
+
+            if (records == null || records.isEmpty()) {
+                return DistrictIngestionSummaryDto.builder()
+                        .district(district)
+                        .canonicalName(canonicalName)
+                        .recordsFetched(0)
+                        .recordsInserted(0)
+                        .recordsSkipped(0)
+                        .recordsRejected(0)
+                        .status("EMPTY")
+                        .build();
+            }
+
+            IngestionResult batchResult = ingestRecords(records, "DATA_GOV_IN", MarketPriceSourceClassification.OFFICIAL_API);
+
+            return DistrictIngestionSummaryDto.builder()
+                    .district(district)
+                    .canonicalName(canonicalName)
+                    .recordsFetched(batchResult.getTotalFetched())
+                    .recordsInserted(batchResult.getInsertedCount())
+                    .recordsSkipped(batchResult.getSkippedDuplicateCount())
+                    .recordsRejected(batchResult.getRejectedCount())
+                    .latestArrivalDate(batchResult.getLatestArrivalDate())
+                    .status("SUCCESS")
+                    .build();
+
+        } catch (Exception ex) {
+            log.error("Failed to ingest district {} [{}]: {}", district, canonicalName, ex.getMessage());
+            return DistrictIngestionSummaryDto.builder()
+                    .district(district)
+                    .canonicalName(canonicalName)
+                    .recordsFetched(0)
+                    .recordsInserted(0)
+                    .recordsSkipped(0)
+                    .recordsRejected(0)
+                    .status("FAILED")
+                    .errorMessage(DataGovInMarketService.sanitize(ex.getMessage()))
+                    .build();
+        }
+    }
+
+    /**
+     * Executes safe, fault-isolated statewide ingestion for Maharashtra across all 36 recognized districts.
+     * Uses statewide feed fetching combined with district-level fault isolation.
+     * Respects provider rate limits and reports successful, empty, and failed districts separately.
+     */
+    public StatewideIngestionReport ingestMaharashtraStatewide(
+            Integer maxPages,
+            Integer delayMs,
+            String commodity) {
+
+        LocalDateTime startTime = LocalDateTime.now();
+        List<MaharashtraDistricts.DistrictInfo> allDistricts = MaharashtraDistricts.getAllDistricts();
+
+        List<DistrictIngestionSummaryDto> summaries = new ArrayList<>();
+        List<String> successful = new ArrayList<>();
+        List<String> empty = new ArrayList<>();
+        Map<String, String> failed = new LinkedHashMap<>();
+
+        int totalFetched = 0;
+        int totalInserted = 0;
+        int totalSkipped = 0;
+        int totalRejected = 0;
+        LocalDate statewideLatestArrivalDate = null;
+
+        // Fetch statewide feed from provider (efficient bounded pagination covering the entire state)
+        List<DataGovInRecordDto> statewideRawRecords = Collections.emptyList();
+        boolean feedFetchFailed = false;
+        String feedErrorMessage = null;
+
+        try {
+            int effectiveMaxPages = (maxPages != null && maxPages > 0) ? maxPages : 10;
+            statewideRawRecords = dataGovInMarketService.fetchAllMaharashtraRecords(effectiveMaxPages, commodity);
+        } catch (Exception ex) {
+            feedFetchFailed = true;
+            feedErrorMessage = DataGovInMarketService.sanitize(ex.getMessage());
+            log.error("Statewide feed retrieval encountered error: {}", feedErrorMessage);
+        }
+
+        if (feedFetchFailed) {
+            // If the single statewide query failed, attempt individual district ingestion with fault isolation
+            log.info("Falling back to district-by-district ingestion with rate-limiting delay ({}ms)", delayMs);
+            int rateLimitDelay = (delayMs != null && delayMs >= 0) ? delayMs : 150;
+
+            for (MaharashtraDistricts.DistrictInfo distInfo : allDistricts) {
+                DistrictIngestionSummaryDto summary = ingestDistrict(
+                        "Maharashtra", distInfo.getCanonicalName(), 2, commodity, null);
+
+                summaries.add(summary);
+                totalFetched += summary.getRecordsFetched();
+                totalInserted += summary.getRecordsInserted();
+                totalSkipped += summary.getRecordsSkipped();
+                totalRejected += summary.getRecordsRejected();
+
+                if (summary.getLatestArrivalDate() != null) {
+                    if (statewideLatestArrivalDate == null || summary.getLatestArrivalDate().isAfter(statewideLatestArrivalDate)) {
+                        statewideLatestArrivalDate = summary.getLatestArrivalDate();
+                    }
+                }
+
+                if ("SUCCESS".equals(summary.getStatus())) {
+                    successful.add(distInfo.getCanonicalName());
+                } else if ("EMPTY".equals(summary.getStatus())) {
+                    empty.add(distInfo.getCanonicalName());
+                } else {
+                    failed.put(distInfo.getCanonicalName(), summary.getErrorMessage());
+                }
+
+                if (rateLimitDelay > 0) {
+                    try {
+                        Thread.sleep(rateLimitDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Group records by canonical district
+            Map<String, List<DataGovInRecordDto>> recordsByDistrict = new HashMap<>();
+            for (DataGovInRecordDto raw : statewideRawRecords) {
+                if (raw != null && raw.getDistrict() != null) {
+                    String canonical = MaharashtraDistricts.normalizeDistrict(raw.getDistrict());
+                    recordsByDistrict.computeIfAbsent(canonical, k -> new ArrayList<>()).add(raw);
+                }
+            }
+
+            // Ingest all statewide records with OFFICIAL_API classification
+            IngestionResult batchResult = ingestRecords(
+                    statewideRawRecords, "DATA_GOV_IN", MarketPriceSourceClassification.OFFICIAL_API);
+
+            totalFetched = batchResult.getTotalFetched();
+            totalInserted = batchResult.getInsertedCount();
+            totalSkipped = batchResult.getSkippedDuplicateCount();
+            totalRejected = batchResult.getRejectedCount();
+            statewideLatestArrivalDate = batchResult.getLatestArrivalDate();
+
+            // Evaluate each of the 36 districts
+            for (MaharashtraDistricts.DistrictInfo distInfo : allDistricts) {
+                String cName = distInfo.getCanonicalName();
+                List<DataGovInRecordDto> distRecords = recordsByDistrict.get(cName);
+
+                if (distRecords != null && !distRecords.isEmpty()) {
+                    successful.add(cName);
+                    summaries.add(DistrictIngestionSummaryDto.builder()
+                            .district(cName)
+                            .canonicalName(cName)
+                            .recordsFetched(distRecords.size())
+                            .recordsInserted(distRecords.size())
+                            .recordsSkipped(0)
+                            .recordsRejected(0)
+                            .status("SUCCESS")
+                            .build());
+                } else {
+                    empty.add(cName);
+                    summaries.add(DistrictIngestionSummaryDto.builder()
+                            .district(cName)
+                            .canonicalName(cName)
+                            .recordsFetched(0)
+                            .recordsInserted(0)
+                            .recordsSkipped(0)
+                            .recordsRejected(0)
+                            .status("EMPTY")
+                            .build());
+                }
+            }
+        }
+
+        LocalDateTime completedTime = LocalDateTime.now();
+        long duration = java.time.Duration.between(startTime, completedTime).toMillis();
+
+        return StatewideIngestionReport.builder()
+                .state("Maharashtra")
+                .totalDistrictsConfigured(allDistricts.size())
+                .totalDistrictsProcessed(summaries.size())
+                .successfulDistricts(successful)
+                .emptyDistricts(empty)
+                .failedDistricts(failed)
+                .totalRecordsFetched(totalFetched)
+                .totalRecordsInserted(totalInserted)
+                .totalRecordsSkipped(totalSkipped)
+                .totalRecordsRejected(totalRejected)
+                .latestArrivalDate(statewideLatestArrivalDate)
+                .startedAt(startTime)
+                .completedAt(completedTime)
+                .executionDurationMs(duration)
+                .districtSummaries(summaries)
+                .build();
     }
 
     /**
