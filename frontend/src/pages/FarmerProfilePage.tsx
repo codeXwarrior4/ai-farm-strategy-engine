@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { FarmerWeatherSection } from '../components/FarmerWeatherSection';
 import { FarmerMarketPricesSection } from '../components/FarmerMarketPricesSection';
@@ -85,6 +85,18 @@ export default function FarmerProfilePage() {
   useEffect(() => {
     setAuthToken(token.trim() || null);
   }, [token]);
+
+  const handleMarketLoaded = useCallback((data: FarmerMarketPricesResponse | null, loadedUserId?: number) => {
+    const currentId = parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0);
+    if (loadedUserId && loadedUserId !== currentId) return;
+    setLiftedMarketData(prev => (prev === data ? prev : data));
+  }, [userId, profileData?.ownerId]);
+
+  const handleWeatherLoaded = useCallback((data: FarmerWeatherResponse | null, loadedUserId?: number) => {
+    const currentId = parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0);
+    if (loadedUserId && loadedUserId !== currentId) return;
+    setLiftedWeatherData(prev => (prev === data ? prev : data));
+  }, [userId, profileData?.ownerId]);
 
   function populateFormFromProfile(profile: FarmerProfileResponse) {
     setForm({
@@ -941,11 +953,7 @@ export default function FarmerProfilePage() {
             document.getElementById('latitude')?.focus();
           }}
           refreshKey={weatherRefreshKey}
-          onWeatherLoaded={(data, loadedUserId) => {
-            const currentId = parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0);
-            if (loadedUserId && loadedUserId !== currentId) return;
-            setLiftedWeatherData(data);
-          }}
+          onWeatherLoaded={handleWeatherLoaded}
         />
 
         {/* Mandi Market Prices Integration (Phase 2B.2) */}
@@ -959,11 +967,7 @@ export default function FarmerProfilePage() {
             el?.focus();
           }}
           refreshKey={marketRefreshKey}
-          onMarketLoaded={(data, loadedUserId) => {
-            const currentId = parseInt(userId.trim(), 10) || (profileData?.ownerId ?? 0);
-            if (loadedUserId && loadedUserId !== currentId) return;
-            setLiftedMarketData(data);
-          }}
+          onMarketLoaded={handleMarketLoaded}
         />
 
         {/* Composite Farm Strategy Engine (Phase 3 — Stage 5B.2) */}

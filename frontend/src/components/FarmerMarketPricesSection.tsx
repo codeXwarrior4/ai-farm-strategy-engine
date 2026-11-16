@@ -30,6 +30,11 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
 
   // Request identity tracker to prevent asynchronous stale-data race
   const activeRequestIdRef = useRef<number>(0);
+  const onMarketLoadedRef = useRef(onMarketLoaded);
+
+  useEffect(() => {
+    onMarketLoadedRef.current = onMarketLoaded;
+  }, [onMarketLoaded]);
 
   // Filter form state
   const [commodityFilter, setCommodityFilter] = useState<string>('');
@@ -55,14 +60,14 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
     if (!userId || userId <= 0) {
       setMarketData(null);
       setError(null);
-      onMarketLoaded?.(null, userId);
+      onMarketLoadedRef.current?.(null, userId);
       return;
     }
 
     if (!hasLocation) {
       setMarketData(null);
       setError(null);
-      onMarketLoaded?.(null, userId);
+      onMarketLoadedRef.current?.(null, userId);
       return;
     }
 
@@ -74,14 +79,14 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
       .then((data) => {
         if (requestId !== activeRequestIdRef.current) return;
         setMarketData(data);
-        onMarketLoaded?.(data, userId);
+        onMarketLoadedRef.current?.(data, userId);
         setIsLoading(false);
       })
       .catch((err: unknown) => {
         if (requestId !== activeRequestIdRef.current) return;
         setIsLoading(false);
         setMarketData(null);
-        onMarketLoaded?.(null, userId);
+        onMarketLoadedRef.current?.(null, userId);
         if (err instanceof ApiError) {
           setErrorStatus(err.status);
           if (err.status === 401) {
@@ -101,7 +106,7 @@ export const FarmerMarketPricesSection: React.FC<FarmerMarketPricesSectionProps>
           setError('An unexpected error occurred while fetching market prices.');
         }
       });
-  }, [userId, hasLocation, activeParams, onMarketLoaded]);
+  }, [userId, hasLocation, activeParams]);
 
   // When location changes or refreshKey increments, reset page and re-fetch
   useEffect(() => {
